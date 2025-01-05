@@ -1,11 +1,10 @@
-from datetime import datetime
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
+from datetime import datetime
 
 from src.config.config import Config
-from src.models.database_models import Base, PostDB, CommentDB
+from src.models.database_models import Base, PostDB, CommentDB, SaasIdeaDB
 from src.utils.logger import logger
 
 
@@ -36,13 +35,16 @@ class DatabaseManager:
             logger.error(f"Erro ao criar tabelas do banco de dados: {e}")
             raise
 
-    def add_post(self, post_data):
+    def add_post(self, post_data, gemini_analysis):
         """Adds a post to the database."""
         session = self.Session()
         try:
             if self.post_exists(post_data.id, session):
                 logger.info(f"Post com ID {post_data.id} já existe no banco de dados. Ignorando.")
                 return
+
+            if self.post_already_analyzed(post_data.id, session):
+                logger.info(f"Post com ID {post_data.id} já foi analisado. Ignorando análise")
 
             post_db = PostDB(
                 id=post_data.id,
@@ -52,7 +54,25 @@ class DatabaseManager:
                 num_comments=post_data.num_comments,
                 ups=post_data.ups,
                 created_at=datetime.now(),
+                gemini_analysis=gemini_analysis
             )
+
+            if gemini_analysis and gemini_analysis.get("post_analysis") and gemini_analysis.get("post_analysis").get(
+                    "insights"):
+                for idea_data in gemini_analysis["post_analysis"]["insights"]:
+                    if idea_data and idea_data.get("saas_product"):
+                        saas_product = idea_data.get("saas_product")
+                        saas_idea_db = SaasIdeaDB(
+                            name=saas_product.get("name"),
+                            description=saas_product.get("description"),
+                            differentiators=saas_product.get("differentiators"),
+                            features=saas_product.get("features"),
+                            implementation_score=saas_product.get("implementation_score"),
+                            market_viability_score=saas_product.get("market_viability_score"),
+                            category=saas_product.get("category"),
+                            post=post_db
+                        )
+                        session.add(saas_idea_db)
 
             for comment_data in post_data.comments:
                 comment_db = CommentDB(
@@ -81,3 +101,9 @@ class DatabaseManager:
     def post_exists(post_id, session):
         """Checks if a post with the given ID already exists in the database."""
         return session.query(PostDB).filter_by(id=post_id).first() is not None
+
+    @staticmethod
+    def post_already_analyzed(post_id, session):
+        """Checks if a post with the given ID already has gemini analysis"""
+        post = session.query(PostDB).filter_by(id=post_id).first()
+        return post is not None and post.gemini_analysis is not None

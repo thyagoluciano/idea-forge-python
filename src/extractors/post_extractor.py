@@ -5,7 +5,7 @@ from datetime import datetime
 
 from src.extractors.comment_extractor import CommentExtractor
 from src.models.post_models import Post
-from src.utils.date_time import get_utc_timestamp, get_start_end_timestamps
+from src.utils.date_time import get_start_end_timestamps
 from src.utils.logger import logger
 from src.utils.reddit_helpers import RedditHelpers
 from src.database.database_manager import DatabaseManager
@@ -46,7 +46,8 @@ class PostExtractor:
                     ups=submission.ups,
                     comments=comments,
                 )
-                self.database_manager.add_post(post)
+                self.database_manager.add_post(post, None)
+
 
                 posts.append(post)
 
