@@ -26,6 +26,11 @@ class PostExtractor:
         posts_count = 0
 
         for submission in listing_generator:
+            # if start_timestamp and end_timestamp:
+            #     if get_utc_timestamp(submission.created_utc) < start_timestamp:
+            #         break
+            #     if get_utc_timestamp(submission.created_utc) > end_timestamp:
+            #         continue
             comments = self.comment_extractor.extract_comments(submission)
             posts.append(
                 Post(

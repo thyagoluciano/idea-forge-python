@@ -29,7 +29,6 @@ volumes:
 
 ## main.py
 ```python
-
 import json
 
 from src.core.reddit_client import RedditClient
@@ -42,30 +41,31 @@ def main():
     post_extractor = PostExtractor(reddit_instance)
 
     # Exemplo de uso para extrair posts de um subreddit
-    subreddit_name = "brasil"
+    subreddit_name = "SaaS"
     sort_criteria = "top"
     batch_size = 5
     days_ago = 1
+    limit = 1
 
-    for posts in post_extractor.extract_posts_from_subreddit(subreddit_name, sort_criteria, batch_size, days_ago):
+    for posts in post_extractor.extract_posts_from_subreddit(subreddit_name, sort_criteria, batch_size, days_ago, limit):
         for post in posts:
-            print(f"Post ID: {post.id}, Title: {post.title}, Upvotes: {post.ups}, Comments: {post.num_comments}")
+            print(f"Post ID: {post.id}, \nTitle: {post.title}, \nDescription: {post.text}, \nURL: {post.url} \nUpvotes: {post.ups}, \nComments: {post.num_comments}")
             for comment in post.comments:
-               print(f"   Comment Author: {comment.author}, Text: {comment.text}, Upvotes: {comment.ups}")
+                print(f"   Comment Author: {comment.author}, Text: {comment.text}, Upvotes: {comment.ups}")
             print("--------------------------")
 
     # Exemplo de uso para extrair posts por pesquisa
-    query = "eleições 2022"
-    sort_criteria = "relevance"
-    batch_size = 5
-    days_ago = 1
-
-    for posts in post_extractor.extract_posts_from_search(query, sort_criteria, batch_size, days_ago):
-         for post in posts:
-            print(f"Post ID: {post.id}, Title: {post.title}, Upvotes: {post.ups}, Comments: {post.num_comments}")
-            for comment in post.comments:
-               print(f"   Comment Author: {comment.author}, Text: {comment.text}, Upvotes: {comment.ups}")
-            print("--------------------------")
+    # query = "eleições 2022"
+    # sort_criteria = "relevance"
+    # batch_size = 5
+    # days_ago = 1
+    #
+    # for posts in post_extractor.extract_posts_from_search(query, sort_criteria, batch_size, days_ago):
+    #     for post in posts:
+    #         print(f"Post ID: {post.id}, Title: {post.title}, Upvotes: {post.ups}, Comments: {post.num_comments}")
+    #         for comment in post.comments:
+    #             print(f"   Comment Author: {comment.author}, Text: {comment.text}, Upvotes: {comment.ups}")
+    #         print("--------------------------")
 
 
 if __name__ == "__main__":
@@ -182,6 +182,8 @@ from datetime import datetime, timedelta, timezone
 
 
 def get_utc_timestamp(date):
+    if isinstance(date, float):
+        date = datetime.fromtimestamp(date, tz=timezone.utc)
     return int(date.timestamp())
 
 
@@ -267,20 +269,20 @@ class PostExtractor:
         self.comment_extractor = CommentExtractor()
 
     def _fetch_posts(self, listing_generator: Iterator[Any], batch_size: int, start_timestamp: Optional[int] = None,
-                     end_timestamp: Optional[int] = None):
+                     end_timestamp: Optional[int] = None, limit: Optional[int] = None):
         """
         Helper function to search for posts using a ListingGenerator
         """
 
         posts = []
+        posts_count = 0
 
         for submission in listing_generator:
-            if start_timestamp and end_timestamp:
-                if get_utc_timestamp(submission.created_utc) < start_timestamp:
-                    break
-                if get_utc_timestamp(submission.created_utc) > end_timestamp:
-                    continue
-
+            # if start_timestamp and end_timestamp:
+            #     if get_utc_timestamp(submission.created_utc) < start_timestamp:
+            #         break
+            #     if get_utc_timestamp(submission.created_utc) > end_timestamp:
+            #         continue
             comments = self.comment_extractor.extract_comments(submission)
             posts.append(
                 Post(
@@ -293,9 +295,13 @@ class PostExtractor:
                     comments=comments,
                 )
             )
+            posts_count += 1
             if len(posts) >= batch_size:
                 yield posts
                 posts = []
+
+            if limit and posts_count >= limit:
+                break
         if posts:
             yield posts
 
@@ -304,7 +310,8 @@ class PostExtractor:
             subreddit_name: str,
             sort_criteria: str,
             batch_size: int = 10,
-            days_ago: int = 7,
+            days_ago: int = 1,
+            limit: Optional[int] = None,
     ) -> List[Post]:
         """
         Extracts posts from a specific subreddit.
@@ -321,14 +328,15 @@ class PostExtractor:
         start_timestamp, end_timestamp = get_start_end_timestamps(days_ago)
         listing_generator = self._get_listing_generator_by_sort(subreddit, sort_criteria)
 
-        yield from self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp)
+        yield from self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp, limit)
 
     def extract_posts_from_search(
             self,
             query: str,
             sort_criteria: str,
             batch_size: int = 10,
-            days_ago: int = 7,
+            days_ago: int = 1,
+            limit: Optional[int] = None,
     ) -> List[Post]:
         """
         Extracts posts from Reddit using a search.
@@ -344,10 +352,10 @@ class PostExtractor:
         """
         start_timestamp, end_timestamp = get_start_end_timestamps(days_ago)
         listing_generator = self._get_search_listing_generator_by_sort(query, sort_criteria)
-        yield from self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp)
+        yield from self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp, limit)
 
-
-    def _get_listing_generator_by_sort(self, subreddit: Subreddit, sort_criteria: str):
+    @staticmethod
+    def _get_listing_generator_by_sort(subreddit: Subreddit, sort_criteria: str):
         """
         Returns the Listing Generator based on the sort criteria
         """
@@ -386,9 +394,10 @@ class PostExtractor:
 
 ## src/extractors/comment_extractor.py
 ```python
+from time import timezone
 from typing import List
 from praw.models import Submission
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.models.comment_models import Comment
 
@@ -409,16 +418,17 @@ class CommentExtractor:
         Returns:
         A list of Comment objects.
         """
-        comments = []
         submission.comment_sort = "top"
         submission.comments.replace_more(limit=None)
+
+        comments = []
 
         for comment in submission.comments.list():
             comments.append(
                 Comment(
                     author=str(comment.author),
                     text=comment.body,
-                    created_utc=datetime.fromtimestamp(comment.created_utc),
+                    created_utc=datetime.fromtimestamp(comment.created_utc, tz=timezone.utc),
                     ups=comment.ups
                 )
             )
