@@ -101,7 +101,7 @@ if __name__ == "__main__":
     # Exemplo de uso
     main(
         directory="/Users/thyagoluciano/Developer/projetos/bemysaas/idea-forge",
-        output_file="catalogo_arquivos.md",
+        output_file="catalogo_arquivos.txt",
         ignore_dirs=[".git", "venv", "old_src", ".idea", ".git"],
-        ignore_files=["README.md", ".gitignore", "catalogo_arquivos.md", "code_2_md.py", ".env", "app.log"]
+        ignore_files=["README.md", ".gitignore", "catalogo_arquivos.txt", "code_2_md.py", ".env", "app.log"]
     )

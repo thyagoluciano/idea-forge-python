@@ -1,15 +1,14 @@
-# extractors/post_extractor.py
-
 from typing import List, Optional, Iterator, Any
 from praw import Reddit
 from praw.exceptions import PRAWException
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from src.extractors.comment_extractor import CommentExtractor
 from src.models.post_models import Post
 from src.utils.date_time import get_utc_timestamp, get_start_end_timestamps
 from src.utils.logger import logger
 from src.utils.reddit_helpers import RedditHelpers
+from src.database.database_manager import DatabaseManager
 
 
 class PostExtractor:
@@ -24,6 +23,7 @@ class PostExtractor:
     def __init__(self, reddit_client: Reddit):
         self.reddit = reddit_client
         self.comment_extractor = CommentExtractor()
+        self.database_manager = DatabaseManager()
 
     def _fetch_posts(self, listing_generator: Iterator[Any], batch_size: int, start_timestamp: Optional[int] = None,
                      end_timestamp: Optional[int] = None, limit: Optional[int] = None):
@@ -36,24 +36,20 @@ class PostExtractor:
 
         try:
             for submission in listing_generator:
-                # Uncomment the following lines if you want to use timestamp filtering
-                # if start_timestamp and end_timestamp:
-                #     if get_utc_timestamp(submission.created_utc) < start_timestamp:
-                #         break
-                #     if get_utc_timestamp(submission.created_utc) > end_timestamp:
-                #         continue
                 comments = self.comment_extractor.extract_comments(submission)
-                posts.append(
-                    Post(
-                        title=submission.title,
-                        id=submission.id,
-                        url=submission.url,
-                        text=submission.selftext,
-                        num_comments=submission.num_comments,
-                        ups=submission.ups,
-                        comments=comments,
-                    )
+                post = Post(
+                    title=submission.title,
+                    id=submission.id,
+                    url=submission.url,
+                    text=submission.selftext,
+                    num_comments=submission.num_comments,
+                    ups=submission.ups,
+                    comments=comments,
                 )
+                self.database_manager.add_post(post)
+
+                posts.append(post)
+
                 posts_count += 1
                 if len(posts) >= batch_size:
                     yield posts

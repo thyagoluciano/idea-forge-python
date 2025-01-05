@@ -2,4 +2,5 @@ praw
 python-dotenv
 google-generativeai
 psycopg2-binary
+sqlalchemy
 apscheduler

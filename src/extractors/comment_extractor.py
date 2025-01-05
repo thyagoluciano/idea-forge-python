@@ -30,7 +30,7 @@ class CommentExtractor:
 
             comments = []
 
-            for comment in submission.comments.list():
+            for comment in submission.comments:
                 comments.append(
                     Comment(
                         author=str(comment.author),
