@@ -1,4 +1,5 @@
 from core.gemini_api import GeminiAPI
+from database.postgres_database import PostgresDatabase
 from database.posts_db import PostsDB
 from database.ideas_db import IdeasDB
 from database.analyzed_posts_db import AnalyzedPostsDB
@@ -26,7 +27,6 @@ def main():
                 logger.info("Não há posts para analisar, aguardando...")
                 time.sleep(60)  # Espera por 1 minuto antes de verificar novamente
                 continue
-
 
             post_id = post[2]
             subreddit_id = post[1]
@@ -58,18 +58,13 @@ def main():
                         logger.info(f"Ideia adicionada: {idea}")
                     else:
                         logger.warning(f"Não foi possível adicionar a ideia, pois ela já existe na base")
-                analyzed_posts_db.add_analyzed_post(post_id,"success")
-                logger.info(f"Post com id {post_id} analisado com sucesso!")
-
+                if posts_db.delete_reddit_post(post_id):
+                    logger.info(f"Post com id {post_id} deletado com sucesso!")
+                    analyzed_posts_db.add_analyzed_post(post_id)
+                else:
+                     logger.warning(f"Não foi possível deletar o post com id {post_id}")
             else:
                 logger.warning(f"Não foi encontrada uma ideia para o post: {post_id}")
-                analyzed_posts_db.add_analyzed_post(post_id,"error")
-
-            if posts_db.delete_reddit_post(post_id):
-                logger.info(f"Post com id {post_id} deletado com sucesso!")
-            else:
-                logger.warning(f"Não foi possível deletar o post com id {post_id}")
-                analyzed_posts_db.add_analyzed_post(post_id,"error")
             #Adiciona um delay entre as chamadas para não sobrecarregar
             time.sleep(5)
     except Exception as e:
@@ -80,7 +75,6 @@ def main():
         ideas_db.close_connection()
         posts_db.close_connection()
         analyzed_posts_db.close_connection()
-
 
 if __name__ == "__main__":
     main()

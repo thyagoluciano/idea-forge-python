@@ -28,45 +28,46 @@ class GeminiAPI:
             logger.error("Modelo Gemini não está inicializado.")
             return {"post_analysis": {"insights": [], "post_description": "", "post_title": ""}}
 
+
         prompt = f"""
-        Você é um assistente especializado em análise de conteúdos para identificar oportunidades de desenvolvimento de produtos SaaS. Sua tarefa é analisar o texto de um post e seus comentários, e gerar insights sobre dores, problemas e soluções relatadas, formatando a resposta em um JSON específico.
+        You are an assistant specialized in content analysis to identify opportunities for the development of SaaS products. Your task is to analyze a text from a post and its comments, and generate insights about pains, problems, and solutions reported, formatting the response in a specific JSON structure. All your responses must be in english
 
-        Instruções:
+        Instructions:
 
-        1.  Analise o texto para identificar problemas ou desafios mencionados.
-        2.  Identifique quaisquer soluções ou ideias propostas que possam ser transformadas em produtos SaaS.
-        3.  Para cada oportunidade de produto SaaS identificada:
-            *   Crie um nome cativante para o produto.
-            *   Descreva como o produto resolveria o problema.
-            *   Liste os principais diferenciais.
-            *   Liste as principais features.
-            *   Atribua um score de facilidade de implementação (1 a 5).
-            *   Atribua um score de viabilidade de mercado (1 a 100).
-        4.  Formate a saída como um JSON seguindo a seguinte estrutura:
+        1.  Analyze the text to identify problems or challenges mentioned.
+        2.  Identify any proposed solutions or ideas that can be transformed into SaaS products.
+        3.  For each SaaS product opportunity identified:
+            *   Create a catchy name for the product.
+            *   Describe how the product would solve the problem.
+            *   List the main differentiators.
+            *   List the main features.
+            *   Assign an implementation ease score (1 to 5).
+            *   Assign a market viability score (1 to 100).
+        4.  Format the output as a JSON following the structure:
 
         {{
             "post_analysis": {{
                 "insights": [
                     {{
-                        "problem": "Problema identificado no texto",
+                        "problem": "Problem identified in the text",
                         "saas_product": {{
-                            "description": "Descrição do produto SaaS",
-                            "differentiators": ["Diferencial 1", "Diferencial 2", ...],
+                            "description": "Description of the SaaS product",
+                            "differentiators": ["Differentiator 1", "Differentiator 2", ...],
                             "features": ["Feature 1", "Feature 2", ...],
                             "implementation_score": int,
                             "market_viability_score": int,
-                            "name": "Nome do Produto SaaS"
+                            "name": "SaaS Product Name"
                         }},
-                        "solution": "Solução proposta"
+                        "solution": "Proposed solution"
                     }},
-                   ... (Mais oportunidades, se encontradas)
+                   ... (More opportunities, if found)
                 ],
-                "post_description": "Descrição geral do post",
-                "post_title": "Título do post"
+                "post_description": "General post description",
+                "post_title": "Post title"
             }}
         }}
 
-        5. Se não encontrar nenhuma ideia, retorne a estrutura com insights vazios:
+        5. If no idea is found, return the structure with empty insights:
           {{
             "post_analysis": {{
                 "insights": [],
@@ -76,10 +77,10 @@ class GeminiAPI:
           }}
 
 
-        Aqui está o texto a ser analisado:
+        Here is the text to be analyzed:
         {text}
 
-        Respeite RIGOROSAMENTE a estrutura do JSON, sem adicionar nenhum campo extra e sem remover nenhum campo obrigatório.
+        Strictly adhere to the JSON structure, without adding any extra fields and without removing any mandatory fields.
         """
         try:
             response = self.model.generate_content(prompt)

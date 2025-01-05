@@ -43,5 +43,5 @@ if __name__ == "__main__":
     #     scheduler.start()
     # except (KeyboardInterrupt, SystemExit):
     #     logger.info("Agendador finalizado.")
-    # run_extractor()
-    run_analyzer()
+    run_extractor()
+    # run_analyzer()

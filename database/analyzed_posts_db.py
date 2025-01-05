@@ -1,6 +1,7 @@
 from database.postgres_database import PostgresDatabase
 from psycopg2 import Error
 from utils.logger import logger
+import traceback
 
 class AnalyzedPostsDB(PostgresDatabase):
     def __init__(self, connection=None):
@@ -20,7 +21,6 @@ class AnalyzedPostsDB(PostgresDatabase):
                     CREATE TABLE IF NOT EXISTS analyzed_posts (
                         id SERIAL PRIMARY KEY,
                         reddit_post_id VARCHAR(255) NOT NULL UNIQUE,
-                        status VARCHAR(255) NOT NULL,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
                 """)
@@ -30,7 +30,7 @@ class AnalyzedPostsDB(PostgresDatabase):
             logger.error(f"Erro ao verificar/criar tabela 'analyzed_posts': {e}")
 
 
-    def add_analyzed_post(self, reddit_post_id, status):
+    def add_analyzed_post(self, reddit_post_id):
         """Adiciona um ID de post analisado ao banco de dados."""
         if not self.connection:
             logger.error("Não há conexão com o banco de dados para adicionar posts analisados.")
@@ -38,14 +38,16 @@ class AnalyzedPostsDB(PostgresDatabase):
         try:
             with self.connection.cursor() as cursor:
                 cursor.execute(
-                    "INSERT INTO analyzed_posts (reddit_post_id, status) VALUES (%s, %s)",
-                    (reddit_post_id, status),
+                    "INSERT INTO analyzed_posts (reddit_post_id) VALUES (%s)",
+                    (reddit_post_id,),
                 )
                 self.connection.commit()
                 logger.debug(f"Post com ID {reddit_post_id} adicionado aos posts analisados.")
                 return True
         except Error as e:
             logger.error(f"Erro ao adicionar post analisado: {e}")
+            logger.error(traceback.format_exc())
+            self.connection.rollback()
             return False
 
 

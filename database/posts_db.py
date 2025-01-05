@@ -1,23 +1,24 @@
 from database.postgres_database import PostgresDatabase
 from psycopg2 import Error
 from utils.logger import logger
+import traceback
 
 
 class PostsDB(PostgresDatabase):
-    def __init__(self, connection = None):
+    def __init__(self, connection=None):
         super().__init__()
         self.connection = connection if connection else self.connection
         self._setup_database()
 
     def _setup_database(self):
-         """Verifica e cria a tabela reddit_content, se necessário."""
-         if not self.connection:
+        """Verifica e cria a tabela reddit_content, se necessário."""
+        if not self.connection:
             return
 
-         try:
+        try:
             with self.connection.cursor() as cursor:
-               # Cria tabela reddit_content, se não existir
-               cursor.execute("""
+                # Cria tabela reddit_content, se não existir
+                cursor.execute("""
                     CREATE TABLE IF NOT EXISTS reddit_content (
                     id SERIAL PRIMARY KEY,
                     subreddit_id INTEGER NOT NULL,
@@ -29,7 +30,7 @@ class PostsDB(PostgresDatabase):
                 """)
             self.connection.commit()
             logger.info("Tabela 'reddit_content' verificada e criada, se necessário.")
-         except Error as e:
+        except Error as e:
             logger.error(f"Erro ao verificar/criar tabela 'reddit_content': {e}")
 
     def add_reddit_post(self, subreddit_id, post_id, combined_text):
@@ -38,20 +39,21 @@ class PostsDB(PostgresDatabase):
             logger.error("Não há conexão com o banco de dados para adicionar posts.")
             return False
         try:
-             with self.connection.cursor() as cursor:
-                 cursor.execute(
+            with self.connection.cursor() as cursor:
+                cursor.execute(
                     """
                      INSERT INTO reddit_content (subreddit_id, post_id, combined_text)
                      VALUES (%s, %s, %s)
                      ON CONFLICT (post_id) DO NOTHING
                     """,
-                   (subreddit_id, post_id, combined_text),
-                  )
-                 self.connection.commit()
-                 logger.debug(f"Post com ID '{post_id}' adicionado ao banco de dados.")
-                 return True
+                    (subreddit_id, post_id, combined_text),
+                )
+                self.connection.commit()
+                logger.debug(f"Post com ID '{post_id}' adicionado ao banco de dados.")
+                return True
         except Error as e:
             logger.error(f"Erro ao adicionar post: {e}")
+            logger.error(traceback.format_exc())
             return False
 
     def delete_reddit_post(self, post_id):
@@ -60,44 +62,63 @@ class PostsDB(PostgresDatabase):
             logger.error("Não há conexão com o banco de dados para deletar posts.")
             return False
         try:
-             with self.connection.cursor() as cursor:
+            with self.connection.cursor() as cursor:
                 cursor.execute(
                     """
                     DELETE FROM reddit_content WHERE post_id = %s
                      """,
-                     (post_id,),
-                 )
+                    (post_id,),
+                )
                 self.connection.commit()
                 logger.debug(f"Post com ID '{post_id}' deletado do banco de dados.")
                 return True
         except Error as e:
             logger.error(f"Erro ao deletar post: {e}")
+            logger.error(traceback.format_exc())
+            self.connection.rollback()
             return False
+
     def get_next_reddit_post(self):
-      """Retorna o proximo post da tabela reddit_content."""
-      if not self.connection:
+        """Retorna o proximo post da tabela reddit_content."""
+        if not self.connection:
             logger.error("Não há conexão com o banco de dados para buscar posts.")
             return None
-      try:
-          with self.connection.cursor() as cursor:
-              cursor.execute("SELECT * FROM reddit_content LIMIT 1")
-              post = cursor.fetchone()
-              return post
-      except Error as e:
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM reddit_content LIMIT 1")
+                post = cursor.fetchone()
+                return post
+        except Error as e:
             logger.error(f"Erro ao buscar posts no banco de dados: {e}")
             return None
 
-
     def get_all_reddit_posts(self):
-            """Retorna todos os posts da tabela reddit_content."""
-            if not self.connection:
-                logger.error("Não há conexão com o banco de dados para buscar posts.")
-                return []
-            try:
-                with self.connection.cursor() as cursor:
-                    cursor.execute("SELECT * FROM reddit_content")
-                    posts = cursor.fetchall()
-                    return posts
-            except Error as e:
-                logger.error(f"Erro ao buscar posts no banco de dados: {e}")
-                return []
+        """Retorna todos os posts da tabela reddit_content."""
+        if not self.connection:
+            logger.error("Não há conexão com o banco de dados para buscar posts.")
+            return []
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM reddit_content")
+                posts = cursor.fetchall()
+                return posts
+        except Error as e:
+            logger.error(f"Erro ao buscar posts no banco de dados: {e}")
+            return []
+
+
+    def is_duplicate_post(self, post_id):
+        """Verifica se um post já existe no banco de dados."""
+        if not self.connection:
+            logger.error("Não há conexão com o banco de dados para verificar duplicidades de posts.")
+            return False
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT EXISTS(SELECT 1 FROM reddit_content WHERE post_id = %s)",
+                    (post_id,),
+                )
+                return cursor.fetchone()[0]
+        except Error as e:
+            logger.error(f"Erro ao verificar duplicidade de post analisado: {e}")
+            return False
