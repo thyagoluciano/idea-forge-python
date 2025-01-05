@@ -18,3 +18,10 @@ class Config:
     SUBREDDIT_NAME = os.getenv("SUBREDDIT_NAME", "Entrepreneur")
     LIMIT_POSTS = os.getenv("LIMIT_POSTS", 10)
     SORT_TYPE = os.getenv("SORT_TYPE", 'hot')
+
+    # PostgreSQL Database
+    POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5432))
+    POSTGRES_USER = os.getenv("POSTGRES_USER")
+    POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+    POSTGRES_DB = os.getenv("POSTGRES_DB", "idea_forge")

@@ -3,6 +3,7 @@ import json
 from config.config import Config
 from utils.logger import logger
 
+
 class GeminiAPI:
     def __init__(self):
         self.config = Config()
@@ -16,7 +17,7 @@ class GeminiAPI:
 
     def analyze_with_gemini(self, text):
         """
-        Analisa um texto usando a API do Google Gemini.
+        Analisa um texto usando a API do Google Gemini, garantindo um formato de resposta JSON consistente.
 
         Args:
           text: texto a ser analisado
@@ -25,38 +26,74 @@ class GeminiAPI:
         """
         if not self.model:
             logger.error("Modelo Gemini não está inicializado.")
-            return {"title": "", "description": "", "category": "", "score": ""}
+            return {"post_analysis": {"insights": [], "post_description": "", "post_title": ""}}
 
         prompt = f"""
-        Você é um assistente especializado em análise de conteúdos para identificar oportunidades de desenvolvimento de produtos SaaS. Sua tarefa é analisar um objeto JSON que inclui title, text, e comments de uma postagem, e gerar insights sobre dores, problemas, e soluções relatadas. Com base nessas informações, você deve:
+        Você é um assistente especializado em análise de conteúdos para identificar oportunidades de desenvolvimento de produtos SaaS. Sua tarefa é analisar o texto de um post e seus comentários, e gerar insights sobre dores, problemas e soluções relatadas, formatando a resposta em um JSON específico.
 
-        Identificar Problemas: Analise o title, text e comments para listar problemas ou desafios mencionados.
-        Extrair Soluções: Identifique quaisquer soluções ou ideias propostas que possam ser transformadas em produtos SaaS.
-        Gerar Produtos SaaS:
-        Crie um nome cativante para cada oportunidade de produto SaaS.
-        Descreva como o produto resolveria o problema, incluindo features e diferenciais principais.
-        Avaliar Viabilidade:
-        Atribua um score de facilidade de implementação de 1 a 5.
-        Atribua um score de viabilidade de mercado de 1 a 100.
-        Estruturar Saída:
-        Retorne as informações em um formato estruturado, como um dicionário JSON.
-        Aqui está o objeto JSON a ser analisado:
+        Instruções:
+
+        1.  Analise o texto para identificar problemas ou desafios mencionados.
+        2.  Identifique quaisquer soluções ou ideias propostas que possam ser transformadas em produtos SaaS.
+        3.  Para cada oportunidade de produto SaaS identificada:
+            *   Crie um nome cativante para o produto.
+            *   Descreva como o produto resolveria o problema.
+            *   Liste os principais diferenciais.
+            *   Liste as principais features.
+            *   Atribua um score de facilidade de implementação (1 a 5).
+            *   Atribua um score de viabilidade de mercado (1 a 100).
+        4.  Formate a saída como um JSON seguindo a seguinte estrutura:
+
+        {{
+            "post_analysis": {{
+                "insights": [
+                    {{
+                        "problem": "Problema identificado no texto",
+                        "saas_product": {{
+                            "description": "Descrição do produto SaaS",
+                            "differentiators": ["Diferencial 1", "Diferencial 2", ...],
+                            "features": ["Feature 1", "Feature 2", ...],
+                            "implementation_score": int,
+                            "market_viability_score": int,
+                            "name": "Nome do Produto SaaS"
+                        }},
+                        "solution": "Solução proposta"
+                    }},
+                   ... (Mais oportunidades, se encontradas)
+                ],
+                "post_description": "Descrição geral do post",
+                "post_title": "Título do post"
+            }}
+        }}
+
+        5. Se não encontrar nenhuma ideia, retorne a estrutura com insights vazios:
+          {{
+            "post_analysis": {{
+                "insights": [],
+                "post_description": "",
+                "post_title": ""
+            }}
+          }}
+
+
+        Aqui está o texto a ser analisado:
         {text}
-        Certifique-se de que a saída seja clara e bem organizada, destacando múltiplas oportunidades se identificadas dentro das informações fornecidas.
+
+        Respeite RIGOROSAMENTE a estrutura do JSON, sem adicionar nenhum campo extra e sem remover nenhum campo obrigatório.
         """
-        # prompt = f"""
-        # Analise o texto a seguir e me retorne um objeto json com: title, description, category e um score de 1 a 10 para a ideia.
-        # Se o texto nao tiver um potencial de ideia de software como serviço retorne um objeto json com esses valores vazios.
-        # texto:
-        # {text}
-        # """
         try:
             response = self.model.generate_content(prompt)
             json_str = response.text.replace("```json", "").replace("```", "")
-            return json.loads(json_str)
+            response_json = json.loads(json_str)
+
+            if not response_json.get("post_analysis") or not isinstance(response_json.get("post_analysis").get("insights"),list):
+                 logger.warning("Formato da resposta do Gemini está incorreta, retornando insights vazios")
+                 return {"post_analysis": {"insights": [], "post_description": "", "post_title": ""}}
+
+            return response_json
         except json.JSONDecodeError as e:
              logger.error(f"Erro ao decodificar resposta JSON do Gemini: {e}")
-             return {"title": "", "description": "", "category": "", "score": ""}
+             return {"post_analysis": {"insights": [], "post_description": "", "post_title": ""}}
         except Exception as e:
            logger.error(f"Erro ao analisar com Gemini: {e}")
-           return {"title": "", "description": "", "category": "", "score": ""}
+           return {"post_analysis": {"insights": [], "post_description": "", "post_title": ""}}
