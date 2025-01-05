@@ -2,8 +2,10 @@ from time import timezone
 from typing import List
 from praw.models import Submission
 from datetime import datetime, timezone
+from praw.exceptions import PRAWException
 
 from src.models.comment_models import Comment
+from src.utils.logger import logger
 
 
 class CommentExtractor:
@@ -22,19 +24,26 @@ class CommentExtractor:
         Returns:
         A list of Comment objects.
         """
-        submission.comment_sort = "top"
-        submission.comments.replace_more(limit=None)
+        try:
+            submission.comment_sort = "top"
+            submission.comments.replace_more(limit=None)
 
-        comments = []
+            comments = []
 
-        for comment in submission.comments.list():
-            comments.append(
-                Comment(
-                    author=str(comment.author),
-                    text=comment.body,
-                    created_utc=datetime.fromtimestamp(comment.created_utc, tz=timezone.utc),
-                    ups=comment.ups
+            for comment in submission.comments.list():
+                comments.append(
+                    Comment(
+                        author=str(comment.author),
+                        text=comment.body,
+                        created_utc=datetime.fromtimestamp(comment.created_utc, tz=timezone.utc),
+                        ups=comment.ups
+                    )
                 )
-            )
 
-        return comments
+            return comments
+        except PRAWException as e:
+            logger.error(f"Erro ao extrair comentários do post {submission.id}: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Erro inesperado ao extrair comentários do post {submission.id}: {e}")
+            return []

@@ -25,3 +25,20 @@ class Config:
     POSTGRES_USER = os.getenv("POSTGRES_USER")
     POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
     POSTGRES_DB = os.getenv("POSTGRES_DB", "idea_forge")
+
+    def __post_init__(self):
+        self._validate_required_vars()
+
+    def _validate_required_vars(self):
+        """Validate required environment variables."""
+        required_vars = {
+            "REDDIT_CLIENT_ID": self.REDDIT_CLIENT_ID,
+            "REDDIT_CLIENT_SECRET": self.REDDIT_CLIENT_SECRET,
+            "REDDIT_USER_AGENT": self.REDDIT_USER_AGENT,
+            "POSTGRES_USER": self.POSTGRES_USER,
+            "POSTGRES_PASSWORD": self.POSTGRES_PASSWORD
+        }
+
+        for var, value in required_vars.items():
+            if not value:
+                raise ValueError(f"Missing required environment variable: {var}")

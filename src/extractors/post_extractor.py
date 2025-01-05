@@ -1,10 +1,12 @@
 from typing import List, Optional, Iterator, Any
 from praw import Reddit
 from praw.models import Subreddit
+from praw.exceptions import PRAWException
 
 from src.extractors.comment_extractor import CommentExtractor
 from src.models.post_models import Post
-from src.utils.date_time import get_utc_timestamp, get_start_end_timestamps
+from src.utils.date_time import get_start_end_timestamps
+from src.utils.logger import logger
 
 
 class PostExtractor:
@@ -25,33 +27,35 @@ class PostExtractor:
         posts = []
         posts_count = 0
 
-        for submission in listing_generator:
-            # if start_timestamp and end_timestamp:
-            #     if get_utc_timestamp(submission.created_utc) < start_timestamp:
-            #         break
-            #     if get_utc_timestamp(submission.created_utc) > end_timestamp:
-            #         continue
-            comments = self.comment_extractor.extract_comments(submission)
-            posts.append(
-                Post(
-                    title=submission.title,
-                    id=submission.id,
-                    url=submission.url,
-                    text=submission.selftext,
-                    num_comments=submission.num_comments,
-                    ups=submission.ups,
-                    comments=comments,
+        try:
+            for submission in listing_generator:
+                comments = self.comment_extractor.extract_comments(submission)
+                posts.append(
+                    Post(
+                        title=submission.title,
+                        id=submission.id,
+                        url=submission.url,
+                        text=submission.selftext,
+                        num_comments=submission.num_comments,
+                        ups=submission.ups,
+                        comments=comments,
+                    )
                 )
-            )
-            posts_count += 1
-            if len(posts) >= batch_size:
-                yield posts
-                posts = []
+                posts_count += 1
+                if len(posts) >= batch_size:
+                    yield posts
+                    posts = []
 
-            if limit and posts_count >= limit:
-                break
-        if posts:
-            yield posts
+                if limit and posts_count >= limit:
+                    break
+            if posts:
+                yield posts
+        except PRAWException as e:
+            logger.error(f"Erro ao buscar posts: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Erro inesperado ao buscar posts: {e}")
+            return []
 
     def extract_posts_from_subreddit(
             self,
@@ -72,11 +76,18 @@ class PostExtractor:
 
         Yields: Lists of Post objects.
         """
-        subreddit = self.reddit.subreddit(subreddit_name)
-        start_timestamp, end_timestamp = get_start_end_timestamps(days_ago)
-        listing_generator = self._get_listing_generator_by_sort(subreddit, sort_criteria)
+        try:
+            subreddit = self.reddit.subreddit(subreddit_name)
+            start_timestamp, end_timestamp = get_start_end_timestamps(days_ago)
+            listing_generator = self._get_listing_generator_by_sort(subreddit, sort_criteria)
 
-        yield from self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp, limit)
+            yield from self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp, limit)
+        except PRAWException as e:
+            logger.error(f"Erro ao acessar o subreddit {subreddit_name}: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Erro inesperado ao extrair posts do subreddit {subreddit_name}: {e}")
+            return []
 
     def extract_posts_from_search(
             self,
@@ -98,10 +109,16 @@ class PostExtractor:
         Yields:
         Lists of Post objects.
         """
-        start_timestamp, end_timestamp = get_start_end_timestamps(days_ago)
-        listing_generator = self._get_search_listing_generator_by_sort(query, sort_criteria)
-        yield from self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp, limit)
-
+        try:
+            start_timestamp, end_timestamp = get_start_end_timestamps(days_ago)
+            listing_generator = self._get_search_listing_generator_by_sort(query, sort_criteria)
+            yield from self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp, limit)
+        except PRAWException as e:
+             logger.error(f"Erro ao executar a busca por {query}: {e}")
+             return []
+        except Exception as e:
+             logger.error(f"Erro inesperado ao buscar posts: {e}")
+             return []
     @staticmethod
     def _get_listing_generator_by_sort(subreddit: Subreddit, sort_criteria: str):
         """
