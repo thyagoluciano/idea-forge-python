@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import json
 
 from src.core.reddit_client import RedditClient
@@ -11,17 +12,36 @@ def main():
 
     # Exemplo de uso para extrair posts de um subreddit
     subreddit_name = "SaaS"
-    sort_criteria = "top"
+    sort_criteria = "hot"
     batch_size = 5
     days_ago = 1
     limit = 1
 
-    for posts in post_extractor.extract_posts_from_subreddit(subreddit_name, sort_criteria, batch_size, days_ago, limit):
+    # Definir intervalo de datas
+    start_date = datetime.now() - timedelta(days=2)  # Posts dos últimos 30 dias
+    end_date = datetime.now()
+
+    # Extrair posts de um subreddit com filtro de data
+    for posts in post_extractor.extract_posts_from_subreddit(
+        subreddit_name,
+        sort_criteria,
+        batch_size,
+        start_date=start_date,
+        end_date=end_date
+    ):
         for post in posts:
             print(f"Post ID: {post.id}, \nTitle: {post.title}, \nDescription: {post.text}, \nURL: {post.url} \nUpvotes: {post.ups}, \nComments: {post.num_comments}")
             for comment in post.comments:
                 print(f"   Comment Author: {comment.author}, Text: {comment.text}, Upvotes: {comment.ups}")
             print("--------------------------")
+
+
+    # for posts in post_extractor.extract_posts_from_subreddit(subreddit_name, sort_criteria, batch_size, days_ago, limit):
+    #     for post in posts:
+    #         print(f"Post ID: {post.id}, \nTitle: {post.title}, \nDescription: {post.text}, \nURL: {post.url} \nUpvotes: {post.ups}, \nComments: {post.num_comments}")
+    #         for comment in post.comments:
+    #             print(f"   Comment Author: {comment.author}, Text: {comment.text}, Upvotes: {comment.ups}")
+    #         print("--------------------------")
 
     # Exemplo de uso para extrair posts por pesquisa
     # query = "eleições 2022"
