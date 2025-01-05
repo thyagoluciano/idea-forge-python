@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, Boolean
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -15,7 +15,7 @@ class PostDB(Base):
     num_comments = Column(Integer)
     ups = Column(Integer)
     created_at = Column(DateTime)
-    gemini_analysis = Column(JSON)
+    gemini_analysis = Column(Boolean, default=False)
     comments = relationship("CommentDB", back_populates="post", cascade="all, delete-orphan")
 
 
@@ -44,3 +44,20 @@ class SaasIdeaDB(Base):
     category = Column(String)
     post_id = Column(String, ForeignKey("posts.id"))
     post = relationship("PostDB")
+
+
+class ExtractionConfigDB(Base):
+    __tablename__ = "extraction_configs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    type = Column(String, nullable=False) # subreddit or search
+    subreddit_name = Column(String)
+    query = Column(String)
+    sort_criteria = Column(String, nullable=False)
+    batch_size = Column(Integer, default=10)
+    days_ago = Column(Integer, default=1)
+    limit = Column(Integer)
+    schedule_time = Column(String) # Store time as HH:MM
+    daily = Column(Boolean, default=True)
+    enabled = Column(Boolean, default=True)
+    last_run = Column(DateTime)

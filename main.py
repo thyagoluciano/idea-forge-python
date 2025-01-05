@@ -1,60 +1,54 @@
-from datetime import datetime, timedelta
-import json
+import time
+import threading
 
-from src.core.reddit_client import RedditClient
-from src.extractors.post_extractor import PostExtractor
+from src.scheduler.extraction_scheduler import ExtractionScheduler
+from src.database.database_manager import DatabaseManager
+from src.scheduler.analysis_scheduler import AnalysisScheduler
 
 
 def main():
-    reddit_client = RedditClient()
-    reddit_instance = reddit_client.get_reddit_instance()
-    post_extractor = PostExtractor(reddit_instance)
+    # Inicia o scheduler de extração
+    extraction_scheduler = ExtractionScheduler()
+    extraction_thread = threading.Thread(target=extraction_scheduler.start)
+    extraction_thread.start()
 
-    # Exemplo de uso para extrair posts de um subreddit
-    subreddit_name = "SaaS"
-    sort_criteria = "hot"
-    batch_size = 5
-    days_ago = 1
-    limit = 1
+    # Inicia o scheduler de analise
+    analysis_scheduler = AnalysisScheduler()
+    analysis_thread = threading.Thread(target=analysis_scheduler.start)
+    analysis_thread.start()
 
-    # Definir intervalo de datas
-    start_date = datetime.now() - timedelta(days=2)  # Posts dos últimos 30 dias
-    end_date = datetime.now()
+    # Adiciona configurações de extração
+    # database_manager = DatabaseManager()
+    # config_saas = {
+    #     "type": "subreddit",
+    #     "subreddit_name": "SaaS",
+    #     "sort_criteria": "hot",
+    #     "batch_size": 10,
+    #     "days_ago": 1,
+    #     "limit": 100,
+    #     "schedule_time": "00:10",  # Horario da extração
+    #     "daily": True
+    # }
+    # database_manager.add_extraction_config(config_saas)
 
-    # Extrair posts de um subreddit com filtro de data
-    for posts in post_extractor.extract_posts_from_subreddit(
-        subreddit_name,
-        sort_criteria,
-        batch_size,
-        start_date=start_date,
-        end_date=end_date
-    ):
-        for post in posts:
-            print(f"Post ID: {post.id}, \nTitle: {post.title}, \nDescription: {post.text}, \nURL: {post.url} \nUpvotes: {post.ups}, \nComments: {post.num_comments}")
-            for comment in post.comments:
-                print(f"   Comment Author: {comment.author}, Text: {comment.text}, Upvotes: {comment.ups}")
-            print("--------------------------")
+    # Força a execução imediata de uma extração
+    # configs = database_manager.get_all_extraction_configs()
+    # for config in configs:
+    #     if config.subreddit_name == "SaaS":
+    #         extraction_scheduler.run_extraction_now(config)
 
+    # Força a execução imediata da análise
+    analysis_scheduler.run_analysis_now()
 
-    # for posts in post_extractor.extract_posts_from_subreddit(subreddit_name, sort_criteria, batch_size, days_ago, limit):
-    #     for post in posts:
-    #         print(f"Post ID: {post.id}, \nTitle: {post.title}, \nDescription: {post.text}, \nURL: {post.url} \nUpvotes: {post.ups}, \nComments: {post.num_comments}")
-    #         for comment in post.comments:
-    #             print(f"   Comment Author: {comment.author}, Text: {comment.text}, Upvotes: {comment.ups}")
-    #         print("--------------------------")
-
-    # Exemplo de uso para extrair posts por pesquisa
-    # query = "eleições 2022"
-    # sort_criteria = "relevance"
-    # batch_size = 5
-    # days_ago = 1
-    #
-    # for posts in post_extractor.extract_posts_from_search(query, sort_criteria, batch_size, days_ago):
-    #     for post in posts:
-    #         print(f"Post ID: {post.id}, Title: {post.title}, Upvotes: {post.ups}, Comments: {post.num_comments}")
-    #         for comment in post.comments:
-    #             print(f"   Comment Author: {comment.author}, Text: {comment.text}, Upvotes: {comment.ups}")
-    #         print("--------------------------")
+    # Mantém o programa rodando para o agendador funcionar
+    try:
+        while True:
+            time.sleep(1)
+    except (KeyboardInterrupt, SystemExit):
+        extraction_scheduler.shutdown()
+        analysis_scheduler.shutdown()
+        extraction_thread.join()
+        analysis_thread.join()
 
 
 if __name__ == "__main__":

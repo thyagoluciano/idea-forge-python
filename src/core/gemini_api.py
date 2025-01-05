@@ -1,5 +1,6 @@
 import google.generativeai as genai
 import json
+import threading
 
 from src.config.config import Config
 from src.utils.logger import logger
@@ -15,6 +16,7 @@ class GeminiAPI:
         except Exception as e:
             logger.error(f"Erro ao conectar com o Gemini: {e}")
             self.model = None
+        self.semaphore = threading.Semaphore(1)  # Limita para 1 thread por vez
 
     def analyze_with_gemini(self, text, post_title):
         """
@@ -98,18 +100,20 @@ class GeminiAPI:
         Strictly adhere to the JSON structure, without adding any extra fields and without removing any mandatory fields.
         """
         try:
-            response = self.model.generate_content(prompt)
-            json_str = response.text.replace("```json", "").replace("```", "")
-            response_json = json.loads(json_str)
+            with self.semaphore:
+                response = self.model.generate_content(prompt)
+                json_str = response.text.replace("```json", "").replace("```", "")
+                response_json = json.loads(json_str)
 
-            if not response_json.get("post_analysis") or not isinstance(response_json.get("post_analysis").get("insights"),list):
-                 logger.warning("Formato da resposta do Gemini está incorreta, retornando insights vazios")
-                 return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
+                if not response_json.get("post_analysis") or not isinstance(
+                        response_json.get("post_analysis").get("insights"), list):
+                    logger.warning("Formato da resposta do Gemini está incorreta, retornando insights vazios")
+                    return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
 
-            return response_json
+                return response_json
         except json.JSONDecodeError as e:
-             logger.error(f"Erro ao decodificar resposta JSON do Gemini: {e}")
-             return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
+            logger.error(f"Erro ao decodificar resposta JSON do Gemini: {e}")
+            return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
         except Exception as e:
-           logger.error(f"Erro ao analisar com Gemini: {e}")
-           return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
+            logger.error(f"Erro ao analisar com Gemini: {e}")
+            return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
