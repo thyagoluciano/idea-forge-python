@@ -14,26 +14,27 @@ def main():
     sort_criteria = "top"
     batch_size = 5
     days_ago = 1
+    limit = 1
 
-    for posts in post_extractor.extract_posts_from_subreddit(subreddit_name, sort_criteria, batch_size, days_ago):
+    for posts in post_extractor.extract_posts_from_subreddit(subreddit_name, sort_criteria, batch_size, days_ago, limit):
         for post in posts:
-            print(f"Post ID: {post.id}, Title: {post.title}, Upvotes: {post.ups}, Comments: {post.num_comments}")
+            print(f"Post ID: {post.id}, \nTitle: {post.title}, \nDescription: {post.text}, \nURL: {post.url} \nUpvotes: {post.ups}, \nComments: {post.num_comments}")
             for comment in post.comments:
                 print(f"   Comment Author: {comment.author}, Text: {comment.text}, Upvotes: {comment.ups}")
             print("--------------------------")
 
     # Exemplo de uso para extrair posts por pesquisa
-    query = "eleições 2022"
-    sort_criteria = "relevance"
-    batch_size = 5
-    days_ago = 1
-
-    for posts in post_extractor.extract_posts_from_search(query, sort_criteria, batch_size, days_ago):
-        for post in posts:
-            print(f"Post ID: {post.id}, Title: {post.title}, Upvotes: {post.ups}, Comments: {post.num_comments}")
-            for comment in post.comments:
-                print(f"   Comment Author: {comment.author}, Text: {comment.text}, Upvotes: {comment.ups}")
-            print("--------------------------")
+    # query = "eleições 2022"
+    # sort_criteria = "relevance"
+    # batch_size = 5
+    # days_ago = 1
+    #
+    # for posts in post_extractor.extract_posts_from_search(query, sort_criteria, batch_size, days_ago):
+    #     for post in posts:
+    #         print(f"Post ID: {post.id}, Title: {post.title}, Upvotes: {post.ups}, Comments: {post.num_comments}")
+    #         for comment in post.comments:
+    #             print(f"   Comment Author: {comment.author}, Text: {comment.text}, Upvotes: {comment.ups}")
+    #         print("--------------------------")
 
 
 if __name__ == "__main__":

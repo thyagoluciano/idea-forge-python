@@ -17,20 +17,15 @@ class PostExtractor:
         self.comment_extractor = CommentExtractor()
 
     def _fetch_posts(self, listing_generator: Iterator[Any], batch_size: int, start_timestamp: Optional[int] = None,
-                     end_timestamp: Optional[int] = None):
+                     end_timestamp: Optional[int] = None, limit: Optional[int] = None):
         """
         Helper function to search for posts using a ListingGenerator
         """
 
         posts = []
+        posts_count = 0
 
         for submission in listing_generator:
-            # if start_timestamp and end_timestamp:
-            #     if get_utc_timestamp(submission.created_utc) < start_timestamp:
-            #         break
-            #     if get_utc_timestamp(submission.created_utc) > end_timestamp:
-            #         continue
-
             comments = self.comment_extractor.extract_comments(submission)
             posts.append(
                 Post(
@@ -43,9 +38,13 @@ class PostExtractor:
                     comments=comments,
                 )
             )
+            posts_count += 1
             if len(posts) >= batch_size:
                 yield posts
                 posts = []
+
+            if limit and posts_count >= limit:
+                break
         if posts:
             yield posts
 
@@ -55,6 +54,7 @@ class PostExtractor:
             sort_criteria: str,
             batch_size: int = 10,
             days_ago: int = 1,
+            limit: Optional[int] = None,
     ) -> List[Post]:
         """
         Extracts posts from a specific subreddit.
@@ -71,7 +71,7 @@ class PostExtractor:
         start_timestamp, end_timestamp = get_start_end_timestamps(days_ago)
         listing_generator = self._get_listing_generator_by_sort(subreddit, sort_criteria)
 
-        yield from self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp)
+        yield from self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp, limit)
 
     def extract_posts_from_search(
             self,
@@ -79,6 +79,7 @@ class PostExtractor:
             sort_criteria: str,
             batch_size: int = 10,
             days_ago: int = 1,
+            limit: Optional[int] = None,
     ) -> List[Post]:
         """
         Extracts posts from Reddit using a search.
@@ -94,7 +95,7 @@ class PostExtractor:
         """
         start_timestamp, end_timestamp = get_start_end_timestamps(days_ago)
         listing_generator = self._get_search_listing_generator_by_sort(query, sort_criteria)
-        yield from self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp)
+        yield from self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp, limit)
 
     @staticmethod
     def _get_listing_generator_by_sort(subreddit: Subreddit, sort_criteria: str):
