@@ -1,138 +1,107 @@
 import os
-import pathlib
-from typing import List
 
 
-def should_ignore_path(path: str, ignore_dirs: List[str], ignore_files: List[str]) -> bool:
+def get_language_from_extension(file_extension):
     """
-    Verifica se um caminho deve ser ignorado.
+    Retorna a linguagem correspondente à extensão do arquivo.
 
-    Args:
-        path (str): Caminho a ser verificado
-        ignore_dirs (List[str]): Lista de diretórios a serem ignorados
-        ignore_files (List[str]): Lista de arquivos a serem ignorados
-
-    Returns:
-        bool: True se o caminho deve ser ignorado, False caso contrário
+    :param file_extension: Extensão do arquivo (sem o ponto)
+    :return: String representando a linguagem para o bloco de código Markdown
     """
-    normalized_path = os.path.normpath(path)
+    language_map = {
+        'py': 'python',
+        'js': 'javascript',
+        'html': 'html',
+        'css': 'css',
+        'java': 'java',
+        'cpp': 'cpp',
+        'c': 'c',
+        'go': 'go',
+        'rs': 'rust',
+        'rb': 'ruby',
+        'php': 'php',
+        'ts': 'typescript',
+        'sh': 'bash',
+        'sql': 'sql',
+        'md': 'markdown',
+        'json': 'json',
+        'xml': 'xml',
+        'yaml': 'yaml',
+        'yml': 'yaml',
+        'txt': 'text'
+    }
+    return language_map.get(file_extension.lower(), '')
 
-    # Verifica se o caminho está em um diretório ignorado
-    for ignore_dir in ignore_dirs:
-        normalized_ignore = os.path.normpath(ignore_dir)
-        if normalized_path.startswith(normalized_ignore):
-            return True
 
-    # Verifica se o arquivo deve ser ignorado
-    file_name = os.path.basename(path)
-    for ignore_pattern in ignore_files:
-        # Permite wildcards simples (*.extensão)
-        if ignore_pattern.startswith('*'):
-            if file_name.endswith(ignore_pattern[1:]):
-                return True
-        # Comparação exata do nome do arquivo
-        elif file_name == ignore_pattern:
-            return True
-
-    return False
-
-
-def directory_to_markdown(directory_path: str, ignore_dirs: List[str] = None, ignore_files: List[str] = None):
+def scan_directory(directory, output_file, ignore_dirs=None, ignore_files=None):
     """
-    Converte todos os arquivos de um diretório para um arquivo Markdown,
-    ignorando diretórios e arquivos especificados.
+    Escaneia um diretório e salva a estrutura em um arquivo Markdown.
 
-    Args:
-        directory_path (str): Caminho do diretório a ser processado
-        ignore_dirs (List[str], optional): Lista de diretórios a serem ignorados
-        ignore_files (List[str], optional): Lista de arquivos a serem ignorados
+    :param directory: Caminho do diretório a ser escaneado
+    :param output_file: Nome do arquivo de saída Markdown
+    :param ignore_dirs: Lista de diretórios a serem ignorados
+    :param ignore_files: Lista de arquivos a serem ignorados
     """
     if ignore_dirs is None:
         ignore_dirs = []
     if ignore_files is None:
         ignore_files = []
 
-    # Normaliza os caminhos dos diretórios a serem ignorados
-    ignore_dirs = [os.path.join(directory_path, d) if not os.path.isabs(d) else d
-                   for d in ignore_dirs]
-
-    # Verifica se o diretório existe
-    if not os.path.exists(directory_path):
-        print(f"Diretório {directory_path} não encontrado.")
-        return
-
-    # Cria o arquivo Markdown de saída
-    output_file = 'catalogo_arquivos.md'
-
-    with open(output_file, 'w', encoding='utf-8') as markdown_file:
-        # Adiciona informação sobre diretórios e arquivos ignorados
-        if ignore_dirs or ignore_files:
-            if ignore_dirs:
-                markdown_file.write("# Diretórios Ignorados\n\n")
-                for ignore_dir in ignore_dirs:
-                    markdown_file.write(f"- `{ignore_dir}`\n")
-                markdown_file.write("\n")
-
-            if ignore_files:
-                markdown_file.write("# Arquivos Ignorados\n\n")
-                for ignore_file in ignore_files:
-                    markdown_file.write(f"- `{ignore_file}`\n")
-                markdown_file.write("\n")
-
-            markdown_file.write("---\n\n")
-
-        # Percorre todos os arquivos no diretório
-        for root, dirs, files in os.walk(directory_path):
-            # Remove diretórios que devem ser ignorados
-            dirs[:] = [d for d in dirs if not should_ignore_path(
-                os.path.join(root, d), ignore_dirs, ignore_files)]
+    with open(output_file, 'w', encoding='utf-8') as f:
+        for root, dirs, files in os.walk(directory):
+            # Ignora diretórios especificados
+            dirs[:] = [d for d in dirs if d not in ignore_dirs]
 
             for file in files:
-                file_path = os.path.join(root, file)
-
-                # Pula arquivo se estiver em um diretório ignorado ou se for um arquivo ignorado
-                if should_ignore_path(file_path, ignore_dirs, ignore_files):
+                # Ignora arquivos especificados
+                if file in ignore_files:
                     continue
 
-                # Obtém o caminho relativo
-                relative_path = os.path.relpath(file_path, directory_path)
+                file_path = os.path.join(root, file)
+                relative_path = os.path.relpath(file_path, directory)
 
-                # Determina o tipo de linguagem para syntax highlighting
-                file_extension = pathlib.Path(file).suffix[1:]
-                language = file_extension if file_extension else ''
+                # Obtém a extensão do arquivo e a linguagem correspondente
+                _, file_extension = os.path.splitext(file)
+                language = get_language_from_extension(file_extension[1:])  # Remove o ponto da extensão
 
-                # Adiciona cabeçalho com path do arquivo
-                markdown_file.write(f"## {relative_path}\n\n")
-                markdown_file.write(f"**Caminho completo**: `{file_path}`\n\n")
+                # Escreve o cabeçalho com o caminho do arquivo
+                f.write(f"## {relative_path}\n")
+                f.write(f"```{language}\n")
 
+                # Lê e escreve o conteúdo do arquivo
                 try:
-                    # Tenta ler o conteúdo do arquivo
-                    with open(file_path, 'r', encoding='utf-8') as current_file:
-                        file_content = current_file.read()
-                        markdown_file.write(f"```{language}\n{file_content}\n```\n\n")
-                except UnicodeDecodeError:
-                    # Para arquivos binários
-                    markdown_file.write("**[Arquivo binário - não foi possível exibir conteúdo]**\n\n")
+                    with open(file_path, 'r', encoding='utf-8') as source_file:
+                        content = source_file.read()
+                        f.write(content)
                 except Exception as e:
-                    markdown_file.write(f"**Erro ao ler arquivo: {str(e)}**\n\n")
+                    f.write(f"Erro ao ler o arquivo: {str(e)}")
 
-    print(f"Catálogo de arquivos gerado: {output_file}")
+                f.write("\n```\n\n")
 
 
-# Exemplo de uso
+def main(directory, output_file, ignore_dirs=None, ignore_files=None):
+    """
+    Função principal que inicia o processo de escaneamento.
+
+    :param directory: Caminho do diretório a ser escaneado
+    :param output_file: Nome do arquivo de saída Markdown
+    :param ignore_dirs: Lista de diretórios a serem ignorados (opcional)
+    :param ignore_files: Lista de arquivos a serem ignorados (opcional)
+    """
+    if ignore_dirs is None:
+        ignore_dirs = []
+    if ignore_files is None:
+        ignore_files = []
+
+    scan_directory(directory, output_file, ignore_dirs, ignore_files)
+    print(f"Arquivo Markdown '{output_file}' criado com sucesso!")
+
+
 if __name__ == "__main__":
-    directory_path = "/Users/thyagoluciano/Developer/projetos/idea-forge"
-    ignore_dirs = [
-        "venv",
-        ".idea",
-        ".git",
-        "sample"
-    ]
-    ignore_files = [
-        "*.pyc",  # Ignora todos os arquivos .pyc
-        ".DS_Store",  # Ignora arquivos .DS_Store
-        "*.log"  # Ignora todos os arquivos de log
-        "code_2_md.py"
-        ".gitignore"
-    ]
-    directory_to_markdown(directory_path, ignore_dirs, ignore_files)
+    # Exemplo de uso
+    main(
+        directory="/Users/thyagoluciano/Developer/projetos/bemysaas/idea-forge",
+        output_file="catalogo_arquivos.md",
+        ignore_dirs=[".git", "venv", "old_src", ".idea", ".git"],
+        ignore_files=["README.md", ".gitignore", "catalogo_arquivos.md", "code_2_md.py", ".env", "app.log"]
+    )
