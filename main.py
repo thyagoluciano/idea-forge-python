@@ -1,9 +1,9 @@
 import time
 import threading
 
-from src.scheduler.extraction_scheduler import ExtractionScheduler
-from src.database.database_manager import DatabaseManager
-from src.scheduler.analysis_scheduler import AnalysisScheduler
+from old.scheduler.extraction_scheduler import ExtractionScheduler
+from old.database.database_manager import DatabaseManager
+from old.scheduler.analysis_scheduler import AnalysisScheduler
 
 
 def main():
@@ -18,7 +18,7 @@ def main():
     analysis_thread.start()
 
     # Adiciona configurações de extração
-    # database_manager = DatabaseManager()
+    database_manager = DatabaseManager()
     # config_saas = {
     #     "type": "subreddit",
     #     "subreddit_name": "SaaS",

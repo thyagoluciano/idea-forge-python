@@ -98,10 +98,10 @@ def main(directory, output_file, ignore_dirs=None, ignore_files=None):
 
 
 if __name__ == "__main__":
-    # Exemplo de uso
     main(
-        directory="/Users/thyagoluciano/Developer/projetos/bemysaas/idea-forge",
-        output_file="catalogo_arquivos.txt",
-        ignore_dirs=[".git", "venv", "old_src", ".idea", ".git"],
-        ignore_files=["README.md", ".gitignore", "catalogo_arquivos.txt", "code_2_md.py", ".env", "app.log"]
+        directory="/Users/thyagoluciano/Developer/projetos/bemysaas/idea-forge/idea-forge-python",
+        # directory="/Users/thyagoluciano/Developer/projetos/bemysaas/saas-scaffold",
+        output_file="catalogo_arquivos.md",
+        ignore_dirs=[".git", "venv", "old_src", ".idea", ".git", ".next", "node_modules", "_files"],
+        ignore_files=["README.md", ".gitignore", "catalogo_arquivos.md", "code_2_md.py", ".env", "app.log", "pnpm-lock.yaml", "package-lock.json", "package.json", "_files/node_modules__pnpm_0819a1._.js"]
     )
