@@ -1,7 +1,6 @@
 # src/core/ports/database_gateway.py
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from datetime import datetime
 from src.core.entities import Post
 
 

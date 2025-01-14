@@ -12,6 +12,7 @@ class Comment:
     created_utc: datetime
     ups: int
 
+
 @dataclass
 class Post:
     """Represents a Reddit post."""

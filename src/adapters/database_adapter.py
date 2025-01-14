@@ -10,6 +10,7 @@ from src.core.ports.database_gateway import DatabaseGateway
 from src.database.models.database_models import Base, PostDB, CommentDB, SaasIdeaDB, ExtractionConfigDB
 from src.core.utils.logger import setup_logger
 from src.core.entities import Post, Comment
+from sqlalchemy.orm import Session
 
 logger = setup_logger(__name__)
 
@@ -127,7 +128,7 @@ class DatabaseAdapter(DatabaseGateway):
         finally:
             session.close()
 
-    def post_exists(self, post_id: str, session=None) -> bool:
+    def post_exists(self, post_id: str, session: Session = None) -> bool:
         """Checks if a post with the given ID already exists in the database."""
         if session is None:
             session = self.Session()
@@ -138,7 +139,7 @@ class DatabaseAdapter(DatabaseGateway):
         else:
             return session.query(PostDB).filter_by(id=post_id).first() is not None
 
-    def post_already_analyzed(self, post_id: str, session=None) -> bool:
+    def post_already_analyzed(self, post_id: str, session: Session = None) -> bool:
         """Checks if a post with the given ID already has gemini analysis"""
         if session is None:
             session = self.Session()
@@ -217,5 +218,42 @@ class DatabaseAdapter(DatabaseGateway):
         except Exception as e:
             logger.error(f"Erro inesperado ao atualizar post com ID {post_id}: {e}")
             session.rollback()
+        finally:
+            session.close()
+
+    def get_posts_to_analyze(self, batch_size: int = 10) -> List[Post]:
+        """Gets posts that are not analyzed"""
+        session = self.Session()
+        try:
+            offset = 0
+            posts_to_analyze = []
+            while True:
+                posts = session.query(PostDB).filter(PostDB.gemini_analysis == False).limit(batch_size).offset(
+                    offset).all()
+                if not posts:
+                    logger.info("Não há mais posts para analisar.")
+                    break
+                posts_to_analyze.extend([
+                    Post(
+                        title=post.title,
+                        id=post.id,
+                        url=post.url,
+                        text=post.text,
+                        num_comments=post.num_comments,
+                        ups=post.ups,
+                        comments=[
+                            Comment(
+                                author=comment.author,
+                                text=comment.text,
+                                created_utc=comment.created_utc,
+                                ups=comment.ups
+                            ) for comment in post.comments
+                        ]) for post in posts
+                ])
+                offset += batch_size
+            return posts_to_analyze
+        except SQLAlchemyError as e:
+            logger.error(f"Erro ao buscar posts para análise: {e}")
+            return []
         finally:
             session.close()
