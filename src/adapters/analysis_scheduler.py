@@ -2,7 +2,7 @@
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 import time
-import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from src.adapters.database_adapter import DatabaseAdapter
 from src.adapters.gemini_adapter import GeminiAdapter
@@ -10,13 +10,6 @@ from src.core.use_cases.analysis_use_case import AnalysisUseCase
 from src.core.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
-
-
-def run_in_thread(func, *args, **kwargs):
-    """Executes a function in a separate thread."""
-    thread = threading.Thread(target=func, args=args, kwargs=kwargs)
-    thread.start()
-    return thread
 
 
 class AnalysisScheduler:
@@ -27,6 +20,7 @@ class AnalysisScheduler:
         self.analysis_use_case = AnalysisUseCase(self.gemini_adapter, self.database_adapter)
         self.job_interval = 10  # intervalo entre os jobs em segundos
         self.batch_size = 10
+        self.executor = ThreadPoolExecutor(max_workers=5)
 
     def start(self):
         """Starts the scheduler and adds existing jobs."""
@@ -52,23 +46,30 @@ class AnalysisScheduler:
 
     def _run_analysis(self):
         """Runs the analysis."""
-        run_in_thread(self._execute_analysis)
+        logger.info(f"Iniciando execução da análise")
+        self.executor.submit(self._execute_analysis)
 
     def _execute_analysis(self):
         """Executes the analysis and handle the interval."""
-        logger.info("Iniciando análise dos posts.")
+        job_name = f"Analysis Job"
+        start_time = time.time()
+        logger.info(f"Executando análise {job_name} - Iniciou às {start_time}")
+
         try:
             self.analysis_use_case.analyze_posts(self.batch_size)
-            logger.info("Análise dos posts finalizada com sucesso.")
+            logger.info(f"Análise dos posts {job_name} finalizada com sucesso.")
         except Exception as e:
-            logger.error(f"Erro durante a execução da análise dos posts: {e}")
+            logger.error(f"Erro durante a execução da análise dos posts: {e}", exc_info=True)
         finally:
+            end_time = time.time()
+            execution_time = end_time - start_time
+            logger.info(f"Análise {job_name} finalizada - Tempo de execução: {execution_time:.2f} segundos.")
             time.sleep(self.job_interval)
 
     def run_analysis_now(self):
         """Runs the analysis immediately."""
         logger.info("Executando análise manualmente.")
-        run_in_thread(self._execute_analysis)
+        self.executor.submit(self._execute_analysis)
 
     def shutdown(self):
         """Shuts down the scheduler."""
