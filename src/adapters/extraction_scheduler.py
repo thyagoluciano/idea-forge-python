@@ -70,22 +70,22 @@ class ExtractionScheduler:
         logger.info(f"Iniciando extração com ID {config.id}")
         try:
             if config.type == "subreddit":
-                 self.extraction_use_case.extract_posts_from_subreddit(
-                     config.subreddit_name,
-                     config.sort_criteria,
-                     config.batch_size,
-                     config.days_ago,
-                     config.limit
-                 )
+                self.extraction_use_case.extract_posts_from_subreddit(
+                    config.subreddit_name,
+                    config.sort_criteria,
+                    config.batch_size,
+                    config.days_ago,
+                    config.limit
+                )
 
             elif config.type == "search":
-                 self.extraction_use_case.extract_posts_from_search(
+                self.extraction_use_case.extract_posts_from_search(
                     config.query,
                     config.sort_criteria,
                     config.batch_size,
                     config.days_ago,
                     config.limit
-                 )
+                )
             self.database_adapter.update_extraction_config(config.id)
             logger.info(f"Extração com ID {config.id} finalizada com sucesso.")
         except Exception as e:

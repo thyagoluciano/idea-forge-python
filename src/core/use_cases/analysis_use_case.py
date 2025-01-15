@@ -1,5 +1,4 @@
 # src/core/use_cases/analysis_use_case.py
-from typing import List, Optional
 from src.core.ports.gemini_gateway import GeminiGateway
 from src.core.ports.database_gateway import DatabaseGateway
 from src.core.entities import Post

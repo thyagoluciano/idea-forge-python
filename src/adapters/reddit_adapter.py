@@ -50,8 +50,6 @@ class RedditAdapter(RedditGateway):
                 if len(posts) >= batch_size:
                     yield posts
                     posts = []
-                if limit and posts_count >= limit:
-                    break
 
             if posts:
                 yield posts

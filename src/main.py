@@ -23,13 +23,13 @@ def main():
 
     # Força a execução imediata de uma extração
 
-    # database_adapter = DatabaseAdapter()
-    # configs = database_adapter.get_all_extraction_configs()
-    # for config in configs:
-    #     if config.subreddit_name == "SaaS":
-    #         extraction_scheduler.run_extraction_now(config)
-    #
-    # analysis_scheduler.run_analysis_now()
+    database_adapter = DatabaseAdapter()
+    configs = database_adapter.get_all_extraction_configs()
+    for config in configs:
+        if config.subreddit_name == "SaaS":
+            extraction_scheduler.run_extraction_now(config)
+
+    analysis_scheduler.run_analysis_now()
 
     api_thread = threading.Thread(target=run_api)
     api_thread.start()
