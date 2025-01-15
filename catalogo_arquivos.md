@@ -393,13 +393,13 @@ def main():
 
     # Força a execução imediata de uma extração
 
-    # database_adapter = DatabaseAdapter()
-    # configs = database_adapter.get_all_extraction_configs()
-    # for config in configs:
-    #     if config.subreddit_name == "SaaS":
-    #         extraction_scheduler.run_extraction_now(config)
-    #
-    # analysis_scheduler.run_analysis_now()
+    database_adapter = DatabaseAdapter()
+    configs = database_adapter.get_all_extraction_configs()
+    for config in configs:
+        if config.subreddit_name == "bigcommerce":
+            extraction_scheduler.run_extraction_now(config)
+
+    analysis_scheduler.run_analysis_now()
 
     api_thread = threading.Thread(target=run_api)
     api_thread.start()
@@ -425,56 +425,270 @@ if __name__ == "__main__":
 
 ```
 
+## src/database/database_manager.py
+```python
+# src/database/database_manager.py
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
+from src.config.config import Config
+from src.database.models.database_models import Base, metadata
+from src.core.utils.logger import setup_logger
+from contextlib import contextmanager
+
+logger = setup_logger(__name__)
+
+
+class DatabaseManager:
+    def __init__(self):
+        self.config = Config()
+        self.engine = self._create_engine()
+        # Alterado para criar as tabelas em ordem
+        metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine)
+
+    def _create_engine(self):
+        """Creates and returns the database engine."""
+        try:
+            url = f"postgresql://{self.config.POSTGRES_USER}:{self.config.POSTGRES_PASSWORD}@{self.config.POSTGRES_HOST}:{self.config.POSTGRES_PORT}/{self.config.POSTGRES_DB}"
+            engine = create_engine(url, echo=False)
+            logger.info("Conexão com o banco de dados estabelecida com sucesso.")
+            return engine
+        except SQLAlchemyError as e:
+            logger.error(f"Erro ao criar engine do banco de dados: {e}")
+            raise
+
+    @contextmanager
+    def session(self):
+        """Context manager for database sessions."""
+        session = self.Session()
+        try:
+            yield session
+        except SQLAlchemyError as e:
+            session.rollback()
+            logger.error(f"Erro na sessão do banco de dados: {e}")
+            raise
+        finally:
+            session.close()
+```
+
 ## src/database/__init__.py
 ```python
 
 ```
 
-## src/database/models/post_models.py
+## src/database/repositories/__init__.py
 ```python
-from dataclasses import dataclass
-from typing import List
 
-from old.models.comment_models import Comment
-
-
-@dataclass
-class Post:
-    """Represents a Reddit post."""
-    title: str
-    id: str
-    url: str
-    text: str
-    num_comments: int
-    ups: int
-    comments: List[Comment]
 ```
 
-## src/database/models/database_models.py
+## src/database/repositories/post_repository.py
 ```python
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, Boolean
-from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy.ext.declarative import declarative_base
+# src/database/repositories/post_repository.py
+from typing import Optional
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+from datetime import datetime
 
-Base = declarative_base()
+from src.database.models.post_db import PostDB  # Importe PostDB de post_db.py
+from src.database.models.comment_db import CommentDB  # Importe CommentDB de comment_db.py
+from src.core.entities import Post
+from src.core.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
-class PostDB(Base):
-    __tablename__ = "posts"
+class PostRepository:
+    def __init__(self, database_manager):
+        self.database_manager = database_manager
 
-    id = Column(String, primary_key=True)
-    title = Column(String, nullable=False)
-    url = Column(String, nullable=False)
-    text = Column(String)
-    num_comments = Column(Integer)
-    ups = Column(Integer)
-    created_at = Column(DateTime)
-    gemini_analysis = Column(Boolean, default=False)
-    comments = relationship("CommentDB", back_populates="post", cascade="all, delete-orphan")
+    def add_post(self, post: Post) -> Optional[str]:
+        """Adds a post to the database."""
+        try:
+            with self.database_manager.session() as session:
+                if self.post_exists(post.id, session):
+                    logger.info(f"Post com ID {post.id} já existe no banco de dados. Ignorando.")
+                    return None
+                post_db = PostDB(
+                    id=post.id,
+                    title=post.title,
+                    url=post.url,
+                    text=post.text,
+                    num_comments=post.num_comments,
+                    ups=post.ups,
+                    created_at=datetime.now(),
+                )
+                for comment_data in post.comments:
+                    comment_db = CommentDB(
+                        author=comment_data.author,
+                        text=comment_data.text,
+                        created_utc=comment_data.created_utc,
+                        ups=comment_data.ups,
+                        post=post_db,
+                    )
+                    session.add(comment_db)
+                session.add(post_db)
+                session.commit()
+                logger.info(f"Post com ID {post.id} adicionado ao banco de dados com sucesso.")
+                return post_db.id
+        except SQLAlchemyError as e:
+            logger.error(f"Erro ao adicionar post com ID {post.id} no banco de dados: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Erro inesperado ao adicionar post com ID {post.id} no banco de dados: {e}")
+            return None
+
+    def post_exists(self, post_id: str, session: Session) -> bool:
+        """Checks if a post with the given ID already exists in the database."""
+        return session.query(PostDB).filter_by(id=post_id).first() is not None
+
+    def post_already_analyzed(self, post_id: str, session: Session) -> bool:
+        """Checks if a post with the given ID already has gemini analysis"""
+        post = session.query(PostDB).filter_by(id=post_id).first()
+        return post is not None and post.gemini_analysis == True
+
+    def update_post_analysis(self, post_id: str) -> None:
+        """Updates the post gemini_analysis to true"""
+        try:
+            with self.database_manager.session() as session:
+                post = session.query(PostDB).filter_by(id=post_id).first()
+                if post:
+                    post.gemini_analysis = True
+                    session.commit()
+                    logger.info(f"Post com ID {post_id} atualizado como analisado")
+                else:
+                    logger.warning(f"Post com ID {post_id} não encontrado")
+        except SQLAlchemyError as e:
+            logger.error(f"Erro ao atualizar post com ID {post_id}: {e}")
+        except Exception as e:
+            logger.error(f"Erro inesperado ao atualizar post com ID {post_id}: {e}")
+
+```
+
+## src/database/repositories/extraction_config_repository.py
+```python
+# src/database/repositories/extraction_config_repository.py
+from typing import List
+from sqlalchemy.exc import SQLAlchemyError
+from datetime import datetime
+
+from src.core.utils.logger import setup_logger
+from src.database.models.extraction_config_db import ExtractionConfigDB
+
+logger = setup_logger(__name__)
+
+
+class ExtractionConfigRepository:
+    def __init__(self, database_manager):
+        self.database_manager = database_manager
+
+    def add_extraction_config(self, config_data: dict) -> None:
+        """Adds a new extraction config."""
+        try:
+            with self.database_manager.session() as session:
+                config_db = ExtractionConfigDB(**config_data)
+                session.add(config_db)
+                session.commit()
+                logger.info(f"Configuração de extração adicionada com sucesso.")
+        except SQLAlchemyError as e:
+            logger.error(f"Erro ao adicionar configuração de extração: {e}")
+        except Exception as e:
+            logger.error(f"Erro inesperado ao adicionar configuração de extração: {e}")
+
+    def get_all_extraction_configs(self) -> List[ExtractionConfigDB]:
+        """Gets all extraction configurations from the database."""
+        try:
+            with self.database_manager.session() as session:
+                configs = session.query(ExtractionConfigDB).filter(ExtractionConfigDB.enabled == True).all()
+                return configs
+        except SQLAlchemyError as e:
+            logger.error(f"Erro ao buscar configurações de extração: {e}")
+            return []
+
+    def update_extraction_config(self, config_id: int) -> None:
+        """Updates the last run time for an extraction config."""
+        try:
+            with self.database_manager.session() as session:
+                config = session.query(ExtractionConfigDB).filter_by(id=config_id).first()
+                if config:
+                    config.last_run = datetime.now()
+                    session.commit()
+                    logger.info(f"Configuração de extração com ID {config_id} atualizada com sucesso")
+                else:
+                    logger.warning(f"Configuração de extração com ID {config_id} não encontrada")
+        except SQLAlchemyError as e:
+            logger.error(f"Erro ao atualizar configuração de extração: {e}")
+        except Exception as e:
+            logger.error(f"Erro inesperado ao atualizar configuração de extração: {e}")
+
+```
+
+## src/database/repositories/saas_idea_repository.py
+```python
+# src/database/repositories/saas_idea_repository.py
+from sqlalchemy.exc import SQLAlchemyError
+
+from src.database.models.saas_idea_db import SaasIdeaDB
+from src.database.models.post_db import PostDB
+from src.core.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
+
+
+class SaasIdeaRepository:
+    def __init__(self, database_manager):
+        self.database_manager = database_manager
+
+    def add_saas_ideas(self, post_id: str, gemini_analysis: dict) -> None:
+        """Adds a saas idea to the database."""
+        try:
+            with self.database_manager.session() as session:
+                post_db = session.query(PostDB).filter_by(id=post_id).first()
+                if not post_db:
+                     logger.warning(f"Post com ID {post_id} não encontrado, impossivel salvar ideias saas.")
+                     return
+                if gemini_analysis and gemini_analysis.get("post_analysis") and gemini_analysis.get("post_analysis").get(
+                         "insights"):
+                    logger.info(f"Salvando ideias de SaaS para post {post_id}")
+                    for idea_data in gemini_analysis["post_analysis"]["insights"]:
+                        if idea_data and idea_data.get("saas_product"):
+                            saas_product = idea_data.get("saas_product")
+                            saas_idea_db = SaasIdeaDB(
+                                name=saas_product.get("name"),
+                                description=saas_product.get("description"),
+                                differentiators=saas_product.get("differentiators"),
+                                features=saas_product.get("features"),
+                                implementation_score=saas_product.get("implementation_score"),
+                                market_viability_score=saas_product.get("market_viability_score"),
+                                category=saas_product.get("category"),
+                                post=post_db
+                             )
+                            session.add(saas_idea_db)
+                            logger.info(f"Ideia de SaaS '{saas_product.get('name')}' salva para o post {post_id}")
+
+                else:
+                     logger.info(f"Não foram encontradas ideias de SaaS para o post {post_id}")
+                post_db.gemini_analysis = True
+                session.commit()
+                logger.info(f"Post com ID {post_id} atualizado como analisado")
+
+        except SQLAlchemyError as e:
+            logger.error(f"Erro ao adicionar ideia saas para o post com ID {post_id}: {e}")
+        except Exception as e:
+            logger.error(f"Erro inesperado ao adicionar ideia saas para o post com ID {post_id}: {e}")
+```
+
+## src/database/models/comment_db.py
+```python
+# src/database/models/comment_db.py
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
+from src.database.models.database_models import Base
 
 
 class CommentDB(Base):
     __tablename__ = "comments"
+    __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     author = Column(String)
@@ -483,10 +697,38 @@ class CommentDB(Base):
     ups = Column(Integer)
     post_id = Column(String, ForeignKey("posts.id"))
     post = relationship("PostDB", back_populates="comments")
+```
+
+## src/database/models/database_models.py
+```python
+# src/database/models/database_models.py
+from sqlalchemy.ext.declarative import declarative_base, declared_attr
+from sqlalchemy import MetaData
+
+metadata = MetaData()
+
+
+class Base(declarative_base(metadata=metadata)):
+    __abstract__ = True
+
+    @declared_attr
+    def __tablename__(cls):
+        return cls.__name__.lower()
+```
+
+## src/database/models/saas_idea_db.py
+```python
+# src/database/models/saas_idea_db.py
+from sqlalchemy import Column, Integer, String, ForeignKey, JSON
+from sqlalchemy.orm import relationship
+
+from src.database.models.database_models import Base
+from src.database.models.post_db import PostDB
 
 
 class SaasIdeaDB(Base):
     __tablename__ = "saas_ideas"
+    __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
@@ -497,46 +739,60 @@ class SaasIdeaDB(Base):
     market_viability_score = Column(Integer)
     category = Column(String)
     post_id = Column(String, ForeignKey("posts.id"))
-    post = relationship("PostDB")
+    post = relationship(PostDB)
+```
+
+## src/database/models/__init__.py
+```python
+
+```
+
+## src/database/models/post_db.py
+```python
+# src/database/models/post_db.py
+from sqlalchemy import Column, String, Integer, DateTime, Boolean
+from sqlalchemy.orm import relationship
+from src.database.models.database_models import Base
+
+
+class PostDB(Base):
+    __tablename__ = "posts"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(String, primary_key=True)
+    title = Column(String, nullable=False)
+    url = Column(String, nullable=False)
+    text = Column(String)
+    num_comments = Column(Integer)
+    ups = Column(Integer)
+    created_at = Column(DateTime)
+    gemini_analysis = Column(Boolean, default=False)
+    comments = relationship("CommentDB", back_populates="post", cascade="all, delete-orphan")
+```
+
+## src/database/models/extraction_config_db.py
+```python
+# src/database/models/extraction_config_db.py
+from sqlalchemy import Column, Integer, String, DateTime, Boolean
+from src.database.models.database_models import Base
 
 
 class ExtractionConfigDB(Base):
     __tablename__ = "extraction_configs"
+    __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    type = Column(String, nullable=False) # subreddit or search
+    type = Column(String, nullable=False)  # subreddit or search
     subreddit_name = Column(String)
     query = Column(String)
     sort_criteria = Column(String, nullable=False)
     batch_size = Column(Integer, default=10)
     days_ago = Column(Integer, default=1)
     limit = Column(Integer)
-    schedule_time = Column(String) # Store time as HH:MM
+    schedule_time = Column(String)  # Store time as HH:MM
     daily = Column(Boolean, default=True)
     enabled = Column(Boolean, default=True)
     last_run = Column(DateTime)
-
-```
-
-## src/database/models/comment_models.py
-```python
-import datetime
-from dataclasses import dataclass
-
-
-@dataclass
-class Comment:
-    """Represents a Reddit comment."""
-    author: str
-    text: str
-    created_utc: datetime
-    ups: int
-
-```
-
-## src/database/models/__init__.py
-```python
-
 ```
 
 ## src/database/models/__pycache__/database_models.cpython-311.pyc
@@ -820,7 +1076,6 @@ class ExtractionUseCase:
 ## src/core/use_cases/analysis_use_case.py
 ```python
 # src/core/use_cases/analysis_use_case.py
-from typing import List, Optional
 from src.core.ports.gemini_gateway import GeminiGateway
 from src.core.ports.database_gateway import DatabaseGateway
 from src.core.entities import Post
@@ -971,6 +1226,7 @@ class RedditGateway(ABC):
 # src/core/ports/saas_ideas_gateway.py
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict
+from src.adapters.models import PaginatedResponse
 
 
 class SaasIdeasGateway(ABC):
@@ -987,7 +1243,7 @@ class SaasIdeasGateway(ABC):
             page_size: int = 10,
             order_by: Optional[str] = None,
             order_direction: Optional[str] = "asc"
-    ) -> Dict:
+    ) -> PaginatedResponse:
         pass
 
     @abstractmethod
@@ -1085,7 +1341,7 @@ Erro ao ler o arquivo: 'utf-8' codec can't decode byte 0xa7 in position 0: inval
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 import time
-import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from src.adapters.database_adapter import DatabaseAdapter
 from src.adapters.gemini_adapter import GeminiAdapter
@@ -1093,13 +1349,6 @@ from src.core.use_cases.analysis_use_case import AnalysisUseCase
 from src.core.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
-
-
-def run_in_thread(func, *args, **kwargs):
-    """Executes a function in a separate thread."""
-    thread = threading.Thread(target=func, args=args, kwargs=kwargs)
-    thread.start()
-    return thread
 
 
 class AnalysisScheduler:
@@ -1110,6 +1359,7 @@ class AnalysisScheduler:
         self.analysis_use_case = AnalysisUseCase(self.gemini_adapter, self.database_adapter)
         self.job_interval = 10  # intervalo entre os jobs em segundos
         self.batch_size = 10
+        self.executor = ThreadPoolExecutor(max_workers=5)
 
     def start(self):
         """Starts the scheduler and adds existing jobs."""
@@ -1135,28 +1385,36 @@ class AnalysisScheduler:
 
     def _run_analysis(self):
         """Runs the analysis."""
-        run_in_thread(self._execute_analysis)
+        logger.info(f"Iniciando execução da análise")
+        self.executor.submit(self._execute_analysis)
 
     def _execute_analysis(self):
         """Executes the analysis and handle the interval."""
-        logger.info("Iniciando análise dos posts.")
+        job_name = f"Analysis Job"
+        start_time = time.time()
+        logger.info(f"Executando análise {job_name} - Iniciou às {start_time}")
+
         try:
             self.analysis_use_case.analyze_posts(self.batch_size)
-            logger.info("Análise dos posts finalizada com sucesso.")
+            logger.info(f"Análise dos posts {job_name} finalizada com sucesso.")
         except Exception as e:
-            logger.error(f"Erro durante a execução da análise dos posts: {e}")
+            logger.error(f"Erro durante a execução da análise dos posts: {e}", exc_info=True)
         finally:
+            end_time = time.time()
+            execution_time = end_time - start_time
+            logger.info(f"Análise {job_name} finalizada - Tempo de execução: {execution_time:.2f} segundos.")
             time.sleep(self.job_interval)
 
     def run_analysis_now(self):
         """Runs the analysis immediately."""
         logger.info("Executando análise manualmente.")
-        run_in_thread(self._execute_analysis)
+        self.executor.submit(self._execute_analysis)
 
     def shutdown(self):
         """Shuts down the scheduler."""
         self.scheduler.shutdown()
         logger.info("Agendador de análise finalizado.")
+
 ```
 
 ## src/adapters/__init__.py
@@ -1168,23 +1426,18 @@ class AnalysisScheduler:
 ```python
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 import time
-import threading
+from concurrent.futures import ThreadPoolExecutor
+
 
 from src.adapters.database_adapter import DatabaseAdapter
 from src.core.use_cases.extraction_use_case import ExtractionUseCase
 from src.adapters.reddit_adapter import RedditAdapter
-from src.database.models.database_models import ExtractionConfigDB
 from src.core.utils.logger import setup_logger
+from src.database.models.extraction_config_db import ExtractionConfigDB
 
 logger = setup_logger(__name__)
-
-
-def run_in_thread(func, *args, **kwargs):
-    """Executes a function in a separate thread."""
-    thread = threading.Thread(target=func, args=args, kwargs=kwargs)
-    thread.start()
-    return thread
 
 
 class ExtractionScheduler:
@@ -1194,6 +1447,7 @@ class ExtractionScheduler:
         self.reddit_adapter = RedditAdapter()
         self.extraction_use_case = ExtractionUseCase(self.reddit_adapter, self.database_adapter)
         self.job_interval = 5  # intervalo entre os jobs em segundos
+        self.executor = ThreadPoolExecutor(max_workers=5)
 
     def start(self):
         """Starts the scheduler and adds existing jobs."""
@@ -1203,39 +1457,49 @@ class ExtractionScheduler:
 
     def _add_existing_jobs(self):
         """Adds all enabled extraction configurations as jobs."""
-        session = self.database_adapter.Session()
         try:
-            configs = session.query(ExtractionConfigDB).filter(ExtractionConfigDB.enabled == True).all()
-            for config in configs:
-                self._add_job(config)
+            with self.database_adapter.database_manager.session() as session:
+                configs = session.query(ExtractionConfigDB).filter(ExtractionConfigDB.enabled == True).all()
+                for config in configs:
+                    self._add_job(config)
         except Exception as e:
-            logger.error(f"Erro ao buscar subreddits no banco de dados: {e}")
-        finally:
-            session.close()
+            logger.error(f"Erro ao buscar configurações no banco de dados: {e}")
 
     def _add_job(self, config):
         """Adds a single job to the scheduler."""
+        job_id = str(config.id)
+        job_name = f"Extraction Job {config.id}"
         if config.daily and config.schedule_time:
             trigger = CronTrigger(hour=config.schedule_time.split(":")[0], minute=config.schedule_time.split(":")[1])
+            logger.info(f"Agendamento para extração com ID {job_id} adicionado, usando CronTrigger.")
+        elif not config.daily and config.schedule_time:
+             trigger = IntervalTrigger(minutes=int(config.schedule_time), start_date=config.last_run)
+             logger.info(f"Agendamento para extração com ID {job_id} adicionado, usando IntervalTrigger.")
         else:
-            # TODO: implementar agendamento por intervalo
-            raise ValueError("Agendamento por intervalo não implementado")
+            raise ValueError(f"Agendamento invalido para extração com ID {config.id}")
+
         self.scheduler.add_job(
             self._run_extraction,
             trigger=trigger,
             args=[config],
-            id=str(config.id),
-            name=f"Extraction Job {config.id}"
+            id=job_id,
+            name=job_name
         )
         logger.info(f"Agendamento para extração com ID {config.id} adicionado")
 
     def _run_extraction(self, config):
         """Runs the extraction based on the config."""
-        run_in_thread(self._execute_extraction, config)
+        job_id = str(config.id)
+        job_name = f"Extraction Job {config.id}"
+        logger.info(f"Iniciando execução da extração com ID {job_id}")
+        self.executor.submit(self._execute_extraction, config)
 
     def _execute_extraction(self, config):
         """Executes the extraction and handle the interval."""
-        logger.info(f"Iniciando extração com ID {config.id}")
+        job_id = str(config.id)
+        job_name = f"Extraction Job {config.id}"
+        start_time = time.time()
+        logger.info(f"Executando extração com ID {job_id} - Iniciou às {start_time}")
         try:
             if config.type == "subreddit":
                  self.extraction_use_case.extract_posts_from_subreddit(
@@ -1245,7 +1509,6 @@ class ExtractionScheduler:
                      config.days_ago,
                      config.limit
                  )
-
             elif config.type == "search":
                  self.extraction_use_case.extract_posts_from_search(
                     config.query,
@@ -1255,16 +1518,21 @@ class ExtractionScheduler:
                     config.limit
                  )
             self.database_adapter.update_extraction_config(config.id)
-            logger.info(f"Extração com ID {config.id} finalizada com sucesso.")
+            logger.info(f"Extração com ID {job_id} finalizada com sucesso.")
+
         except Exception as e:
-            logger.error(f"Erro durante a execução da extração com ID {config.id}: {e}")
+             logger.error(f"Erro durante a execução da extração com ID {job_id}: {e}", exc_info=True)
         finally:
-            time.sleep(self.job_interval)
+             end_time = time.time()
+             execution_time = end_time - start_time
+             logger.info(f"Extração com ID {job_id} finalizada - Tempo de execução: {execution_time:.2f} segundos.")
+             time.sleep(self.job_interval)
 
     def run_extraction_now(self, config):
         """Runs the extraction immediately."""
-        logger.info(f"Executando extração manualmente com ID {config.id}")
-        run_in_thread(self._execute_extraction, config)
+        job_id = str(config.id)
+        logger.info(f"Executando extração manualmente com ID {job_id}")
+        self.executor.submit(self._execute_extraction, config)
 
     def shutdown(self):
         """Shuts down the scheduler."""
@@ -1275,69 +1543,84 @@ class ExtractionScheduler:
 ## src/adapters/saas_ideas_adapter.py
 ```python
 # src/adapters/saas_ideas_adapter.py
-from typing import List, Optional, Dict
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, JSON, text, DateTime, Boolean, asc, desc
-from sqlalchemy.orm import sessionmaker, declarative_base, relationship
+from typing import List, Optional, Dict, Any
+from sqlalchemy import create_engine, asc, desc
+from sqlalchemy.orm import sessionmaker, Query
 from sqlalchemy.exc import SQLAlchemyError
 from src.config.config import Config
 from src.core.ports.saas_ideas_gateway import SaasIdeasGateway
 from src.core.utils.logger import setup_logger
+from src.adapters.models import SaasIdea, PaginatedResponse
+from src.database.models.saas_idea_db import SaasIdeaDB
 
 logger = setup_logger(__name__)
 
 
 class SaasIdeasAdapter(SaasIdeasGateway):
-    def __init__(self):
-        self.config = Config()
-        url = f"postgresql://{self.config.POSTGRES_USER}:{self.config.POSTGRES_PASSWORD}@{self.config.POSTGRES_HOST}:{self.config.POSTGRES_PORT}/{self.config.POSTGRES_DB}"
+    def __init__(self) -> None:
+        self.config: Config = Config()
+        url: str = f"postgresql://{self.config.POSTGRES_USER}:{self.config.POSTGRES_PASSWORD}@{self.config.POSTGRES_HOST}:{self.config.POSTGRES_PORT}/{self.config.POSTGRES_DB}"
         self.engine = create_engine(url)
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
-        Base = declarative_base()
 
-        class SaasIdeaDB(Base):
-            __tablename__ = "saas_ideas"
+    def _build_saas_ideas_query(self, db: sessionmaker, category: Optional[str] = None, features: Optional[str] = None,
+                                differentiators: Optional[str] = None, description: Optional[str] = None) -> Query:
+        with db() as session:
+            query: Query = session.query(SaasIdeaDB)
 
-            id = Column(Integer, primary_key=True, autoincrement=True)
-            name = Column(String, nullable=False)
-            description = Column(String)
-            differentiators = Column(JSON)
-            features = Column(JSON)
-            implementation_score = Column(Integer)
-            market_viability_score = Column(Integer)
-            category = Column(String)
-            post_id = Column(String, ForeignKey("posts.id"))
-            post = relationship("PostDB")
+            if category is not None:
+                query = query.filter(SaasIdeaDB.category == category)
+            if features:
+                query = query.filter(SaasIdeaDB.features.like(f"%{features}%"))
+            if differentiators:
+                query = query.filter(SaasIdeaDB.differentiators.like(f"%{differentiators}%"))
+            if description:
+                query = query.filter(SaasIdeaDB.description.like(f"%{description}%"))
 
-        class PostDB(Base):
-            __tablename__ = "posts"
+            return query
 
-            id = Column(String, primary_key=True)
-            title = Column(String, nullable=False)
-            url = Column(String, nullable=False)
-            text = Column(String)
-            num_comments = Column(Integer)
-            ups = Column(Integer)
-            created_at = Column(DateTime)
-            gemini_analysis = Column(Boolean, default=False)
-            comments = relationship("CommentDB", back_populates="post", cascade="all, delete-orphan")
+    def _apply_order_by(self, query: Query, order_by: Optional[str] = None,
+                        order_direction: Optional[str] = "asc") -> Query:
+        if order_by:
+            order_by_column = getattr(SaasIdeaDB, order_by)
+            if order_direction == "asc":
+                query = query.order_by(asc(order_by_column))
+            else:
+                query = query.order_by(desc(order_by_column))
+        return query
 
-        class CommentDB(Base):
-            __tablename__ = "comments"
+    def _paginate_query(self, query: Query, page: int, page_size: int) -> tuple[List[Any], int]:
+        total: int = query.count()
+        items: List[Any] = query.offset((page - 1) * page_size).limit(page_size).all()
+        return items, total
 
-            id = Column(Integer, primary_key=True, autoincrement=True)
-            author = Column(String)
-            text = Column(String)
-            created_utc = Column(DateTime)
-            ups = Column(Integer)
-            post_id = Column(String, ForeignKey("posts.id"))
-            post = relationship("PostDB", back_populates="comments")
-
-        self.SaasIdeaDB = SaasIdeaDB
-        self.PostDB = PostDB
-        self.CommentDB = CommentDB
+    def _execute_saas_ideas_query(self, db: sessionmaker, category: Optional[str] = None,
+                                  features: Optional[str] = None,
+                                  differentiators: Optional[str] = None, description: Optional[str] = None,
+                                  page: int = 1, page_size: int = 10, order_by: Optional[str] = None,
+                                  order_direction: Optional[str] = "asc") -> Dict:
+        try:
+            with db() as session:
+                query: Query = self._build_saas_ideas_query(db, category, features, differentiators, description)
+                query = self._apply_order_by(query, order_by, order_direction)
+                items, total = self._paginate_query(query, page, page_size)
+                return {
+                    "items": [SaasIdea.model_validate(item) for item in items],
+                    "total": total,
+                    "page": page,
+                    "page_size": page_size,
+                }
+        except SQLAlchemyError as e:
+            logger.error(f"Erro ao executar query de ideias saas: {e}")
+            return {"items": [], "total": 0, "page": page, "page_size": page_size}
+        except Exception as e:
+            logger.error(f"Erro inesperado ao executar query de ideias saas: {e}")
+            return {"items": [], "total": 0, "page": page, "page_size": page_size}
 
     def list_saas_ideas(
             self,
+            implementation_score: Optional[int] = None,
+            market_viability_score: Optional[int] = None,
             category: Optional[str] = None,
             features: Optional[str] = None,
             differentiators: Optional[str] = None,
@@ -1346,53 +1629,30 @@ class SaasIdeasAdapter(SaasIdeasGateway):
             page_size: int = 10,
             order_by: Optional[str] = None,
             order_direction: Optional[str] = "asc"
-    ) -> Dict:
-        db = self.SessionLocal()
+    ) -> PaginatedResponse:
         try:
-            query = db.query(self.SaasIdeaDB)
-
-            if category is not None:
-                query = query.filter(self.SaasIdeaDB.category == category)
-
-            if features:
-                query = query.filter(self.SaasIdeaDB.features.like(f"%{features}%"))
-            if differentiators:
-                query = query.filter(self.SaasIdeaDB.differentiators.like(f"%{differentiators}%"))
-            if description:
-                query = query.filter(self.SaasIdeaDB.description.like(f"%{description}%"))
-
-            if order_by:
-                order_by_column = getattr(self.SaasIdeaDB, order_by)
-                if order_direction == "asc":
-                    query = query.order_by(asc(order_by_column))
-                else:
-                    query = query.order_by(desc(order_by_column))
-
-            total = query.count()
-            saas_ideas = query.offset((page - 1) * page_size).limit(page_size).all()
-            return {
-                "items": [idea.__dict__ for idea in saas_ideas],
-                "total": total,
-                "page": page,
-                "page_size": page_size,
-            }
+            response = self._execute_saas_ideas_query(self.SessionLocal, category, features, differentiators,
+                                                      description, page,
+                                                      page_size, order_by, order_direction)
+            return PaginatedResponse(**response)
         except SQLAlchemyError as e:
             logger.error(f"Erro ao buscar ideias Saas: {e}")
-            return {"items": [], "total": 0, "page": page, "page_size": page_size}
-
-        finally:
-            db.close()
+            return PaginatedResponse(items=[], total=0, page=page, page_size=page_size)
+        except Exception as e:
+            logger.error(f"Erro inesperado ao buscar ideias Saas: {e}")
+            return PaginatedResponse(items=[], total=0, page=page, page_size=page_size)
 
     def list_all_categories(self) -> List[str]:
         db = self.SessionLocal()
         try:
-            categories = db.query(self.SaasIdeaDB.category).distinct().all()
-            return [category[0] for category in categories if category[0]]
+            categories = db.query(SaasIdeaDB.category).distinct()
+            return [category.scalar() for category in categories]
         except SQLAlchemyError as e:
             logger.error(f"Erro ao buscar categorias: {e}")
             return []
         finally:
             db.close()
+
 ```
 
 ## src/adapters/gemini_adapter.py
@@ -1425,23 +1685,9 @@ class GeminiAdapter(GeminiGateway):
         self.retry_delay = 10  # Tempo de espera entre as tentativas em segundos
         self.max_retries = 3  # Número máximo de tentativas
 
-    def analyze_text(self, text: str, post_title: str) -> Optional[Dict]:
-        """
-        Analisa um texto usando a API do Google Gemini, garantindo um formato de resposta JSON consistente.
-
-        Args:
-          text: texto a ser analisado
-          post_title: titulo do post para inserir no json de resposta
-        Returns:
-           Um dicionário contendo o title, description, category e score.
-        """
-        if not self.model:
-            logger.error("Modelo Gemini não está inicializado.")
-            return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
-
-        retries = 0
-        while retries < self.max_retries:
-            prompt = f"""
+    def _build_prompt(self, text: str, post_title: str) -> str:
+        """Builds the prompt for the Gemini API."""
+        return f"""
             You are an assistant specialized in content analysis to identify opportunities for the development of SaaS products. Your task is to analyze a text from a post and its comments, and generate insights about pains, problems, and solutions reported, formatting the response in a specific JSON structure. All your responses must be in english
 
             Instructions:
@@ -1509,21 +1755,19 @@ class GeminiAdapter(GeminiGateway):
 
             Strictly adhere to the JSON structure, without adding any extra fields and without removing any mandatory fields.
             """
+
+    def _call_gemini_api(self, prompt: str) -> Optional[str]:
+        """Calls the Gemini API with retry logic."""
+        if not self.model:
+            logger.error("Modelo Gemini não está inicializado.")
+            return None
+
+        retries = 0
+        while retries < self.max_retries:
             try:
                 with self.semaphore:
                     response = self.model.generate_content(prompt)
-                    json_str = response.text.replace("```json", "").replace("```", "")
-                    response_json = json.loads(json_str)
-
-                    if not response_json.get("post_analysis") or not isinstance(
-                            response_json.get("post_analysis").get("insights"), list):
-                        logger.warning("Formato da resposta do Gemini está incorreta, retornando insights vazios")
-                        return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
-
-                    return response_json
-            except json.JSONDecodeError as e:
-                logger.error(f"Erro ao decodificar resposta JSON do Gemini: {e}")
-                return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
+                    return response.text
             except Exception as e:
                 logger.error(f"Erro ao analisar com Gemini: {e}")
                 if "429 Resource has been exhausted" in str(e):
@@ -1532,287 +1776,148 @@ class GeminiAdapter(GeminiGateway):
                         f"Erro de quota do Gemini, tentando novamente em {self.retry_delay} segundos (tentativa {retries}/{self.max_retries})")
                     time.sleep(self.retry_delay)
                 else:
-                    return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
-        return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
+                    return None
+        return None
+
+    def _process_gemini_response(self, response_text: Optional[str], post_title: str) -> Dict:
+        """Processes the response from the Gemini API."""
+        if not response_text:
+            return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
+        try:
+            json_str = response_text.replace("```json", "").replace("```", "")
+            response_json = json.loads(json_str)
+
+            if not response_json.get("post_analysis") or not isinstance(
+                    response_json.get("post_analysis").get("insights"), list):
+                logger.warning("Formato da resposta do Gemini está incorreta, retornando insights vazios")
+                return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
+            return response_json
+        except json.JSONDecodeError as e:
+            logger.error(f"Erro ao decodificar resposta JSON do Gemini: {e}")
+            return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
+        except Exception as e:
+            logger.error(f"Erro inesperado ao processar resposta do Gemini: {e}")
+            return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
+
+    def analyze_text(self, text: str, post_title: str) -> Optional[Dict]:
+        """
+        Analisa um texto usando a API do Google Gemini, garantindo um formato de resposta JSON consistente.
+        """
+        prompt = self._build_prompt(text, post_title)
+        response_text = self._call_gemini_api(prompt)
+        return self._process_gemini_response(response_text, post_title)
+
 ```
 
 ## src/adapters/database_adapter.py
 ```python
 # src/adapters/database_adapter.py
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import SQLAlchemyError
-from datetime import datetime
 from typing import List, Optional
-
-from src.config.config import Config
+from sqlalchemy.exc import SQLAlchemyError
 from src.core.ports.database_gateway import DatabaseGateway
-from src.database.models.database_models import Base, PostDB, CommentDB, SaasIdeaDB, ExtractionConfigDB
+from src.database.database_manager import DatabaseManager
+from src.database.repositories.post_repository import PostRepository
+from src.database.repositories.saas_idea_repository import SaasIdeaRepository
+from src.database.repositories.extraction_config_repository import ExtractionConfigRepository
 from src.core.utils.logger import setup_logger
 from src.core.entities import Post, Comment
-from sqlalchemy.orm import Session
+from src.database.models.post_db import PostDB
 
 logger = setup_logger(__name__)
 
 
 class DatabaseAdapter(DatabaseGateway):
     def __init__(self):
-        self.config = Config()
-        self.engine = self._create_engine()
-        self.Session = sessionmaker(bind=self.engine)
-        self._create_tables()
-
-    def _create_engine(self):
-        """Creates and returns the database engine."""
-        try:
-            url = f"postgresql://{self.config.POSTGRES_USER}:{self.config.POSTGRES_PASSWORD}@{self.config.POSTGRES_HOST}:{self.config.POSTGRES_PORT}/{self.config.POSTGRES_DB}"
-            engine = create_engine(url)
-            logger.info("Conexão com o banco de dados estabelecida com sucesso.")
-            return engine
-        except SQLAlchemyError as e:
-            logger.error(f"Erro ao criar engine do banco de dados: {e}")
-            raise
-
-    def _create_tables(self):
-        """Creates database tables if they don't exist."""
-        try:
-            Base.metadata.create_all(self.engine)
-            logger.info("Tabelas do banco de dados criadas com sucesso.")
-        except SQLAlchemyError as e:
-            logger.error(f"Erro ao criar tabelas do banco de dados: {e}")
-            raise
+        self.database_manager = DatabaseManager()
+        self.post_repository = PostRepository(self.database_manager)
+        self.saas_idea_repository = SaasIdeaRepository(self.database_manager)
+        self.extraction_config_repository = ExtractionConfigRepository(self.database_manager)
 
     def add_post(self, post: Post) -> Optional[str]:
         """Adds a post to the database."""
-        session = self.Session()
-        try:
-            if self.post_exists(post.id, session):
-                logger.info(f"Post com ID {post.id} já existe no banco de dados. Ignorando.")
-                return None
-
-            post_db = PostDB(
-                id=post.id,
-                title=post.title,
-                url=post.url,
-                text=post.text,
-                num_comments=post.num_comments,
-                ups=post.ups,
-                created_at=datetime.now(),
-            )
-
-            for comment_data in post.comments:
-                comment_db = CommentDB(
-                    author=comment_data.author,
-                    text=comment_data.text,
-                    created_utc=comment_data.created_utc,
-                    ups=comment_data.ups,
-                    post=post_db,
-                )
-                session.add(comment_db)
-
-            session.add(post_db)
-            session.commit()
-            logger.info(f"Post com ID {post.id} adicionado ao banco de dados com sucesso.")
-            return post_db.id
-
-        except SQLAlchemyError as e:
-            logger.error(f"Erro ao adicionar post com ID {post.id} no banco de dados: {e}")
-            session.rollback()
-        except Exception as e:
-            logger.error(f"Erro inesperado ao adicionar post com ID {post.id} no banco de dados: {e}")
-            session.rollback()
-        finally:
-            session.close()
+        return self.post_repository.add_post(post)
 
     def add_saas_ideas(self, post_id: str, gemini_analysis: dict) -> None:
         """Adds a saas idea to the database."""
-        session = self.Session()
-        try:
-            post_db = session.query(PostDB).filter_by(id=post_id).first()
-            if not post_db:
-                logger.warning(f"Post com ID {post_id} não encontrado, impossivel salvar ideias saas.")
-                return
+        self.saas_idea_repository.add_saas_ideas(post_id, gemini_analysis)
 
-            if gemini_analysis and gemini_analysis.get("post_analysis") and gemini_analysis.get("post_analysis").get(
-                    "insights"):
-                logger.info(f"Salvando ideias de SaaS para post {post_id}")
-                for idea_data in gemini_analysis["post_analysis"]["insights"]:
-                    if idea_data and idea_data.get("saas_product"):
-                        saas_product = idea_data.get("saas_product")
-                        saas_idea_db = SaasIdeaDB(
-                            name=saas_product.get("name"),
-                            description=saas_product.get("description"),
-                            differentiators=saas_product.get("differentiators"),
-                            features=saas_product.get("features"),
-                            implementation_score=saas_product.get("implementation_score"),
-                            market_viability_score=saas_product.get("market_viability_score"),
-                            category=saas_product.get("category"),
-                            post=post_db
-                        )
-                        session.add(saas_idea_db)
-                        logger.info(f"Ideia de SaaS '{saas_product.get('name')}' salva para o post {post_id}")
+    def post_exists(self, post_id: str) -> bool:
+       """Checks if a post with the given ID already exists in the database."""
+       with self.database_manager.session() as session:
+           return self.post_repository.post_exists(post_id, session)
 
-            else:
-                logger.info(f"Não foram encontradas ideias de SaaS para o post {post_id}")
-
-            post_db.gemini_analysis = True
-            session.commit()
-            logger.info(f"Post com ID {post_id} atualizado como analisado")
-
-        except SQLAlchemyError as e:
-            logger.error(f"Erro ao adicionar ideia saas para o post com ID {post_id}: {e}")
-            session.rollback()
-        except Exception as e:
-            logger.error(f"Erro inesperado ao adicionar ideia saas para o post com ID {post_id}: {e}")
-            session.rollback()
-        finally:
-            session.close()
-
-    def post_exists(self, post_id: str, session: Session = None) -> bool:
-        """Checks if a post with the given ID already exists in the database."""
-        if session is None:
-            session = self.Session()
-            try:
-                return session.query(PostDB).filter_by(id=post_id).first() is not None
-            finally:
-                session.close()
-        else:
-            return session.query(PostDB).filter_by(id=post_id).first() is not None
-
-    def post_already_analyzed(self, post_id: str, session: Session = None) -> bool:
+    def post_already_analyzed(self, post_id: str) -> bool:
         """Checks if a post with the given ID already has gemini analysis"""
-        if session is None:
-            session = self.Session()
-            try:
-                post = session.query(PostDB).filter_by(id=post_id).first()
-                return post is not None and post.gemini_analysis == True
-            finally:
-                session.close()
-        else:
-            post = session.query(PostDB).filter_by(id=post_id).first()
-            return post is not None and post.gemini_analysis == True
+        with self.database_manager.session() as session:
+            return self.post_repository.post_already_analyzed(post_id, session)
 
     def add_extraction_config(self, config_data: dict) -> None:
         """Adds a new extraction config."""
-        session = self.Session()
-        try:
-            config_db = ExtractionConfigDB(**config_data)
-            session.add(config_db)
-            session.commit()
-            logger.info(f"Configuração de extração adicionada com sucesso.")
-        except SQLAlchemyError as e:
-            logger.error(f"Erro ao adicionar configuração de extração: {e}")
-            session.rollback()
-        except Exception as e:
-            logger.error(f"Erro inesperado ao adicionar configuração de extração: {e}")
-            session.rollback()
-        finally:
-            session.close()
+        self.extraction_config_repository.add_extraction_config(config_data)
 
-    def get_all_extraction_configs(self) -> List[ExtractionConfigDB]:
-        """Gets all extraction configurations from the database."""
-        session = self.Session()
-        try:
-            configs = session.query(ExtractionConfigDB).filter(ExtractionConfigDB.enabled == True).all()
-            return configs
-        except SQLAlchemyError as e:
-            logger.error(f"Erro ao buscar configurações de extração: {e}")
-            return []
-        finally:
-            session.close()
+    def get_all_extraction_configs(self) -> List[dict]:
+       """Gets all extraction configurations from the database."""
+       return self.extraction_config_repository.get_all_extraction_configs()
 
     def update_extraction_config(self, config_id: int) -> None:
-        """Updates the last run time for an extraction config."""
-        session = self.Session()
-        try:
-            config = session.query(ExtractionConfigDB).filter_by(id=config_id).first()
-            if config:
-                config.last_run = datetime.now()
-                session.commit()
-                logger.info(f"Configuração de extração com ID {config_id} atualizada com sucesso")
-            else:
-                logger.warning(f"Configuração de extração com ID {config_id} não encontrada")
-        except SQLAlchemyError as e:
-            logger.error(f"Erro ao atualizar configuração de extração: {e}")
-            session.rollback()
-        except Exception as e:
-            logger.error(f"Erro inesperado ao atualizar configuração de extração: {e}")
-            session.rollback()
-        finally:
-            session.close()
+       """Updates the last run time for an extraction config."""
+       self.extraction_config_repository.update_extraction_config(config_id)
 
     def update_post_analysis(self, post_id: str) -> None:
         """Updates the post gemini_analysis to true"""
-        session = self.Session()
-        try:
-            post = session.query(PostDB).filter_by(id=post_id).first()
-            if post:
-                post.gemini_analysis = True
-                session.commit()
-                logger.info(f"Post com ID {post_id} atualizado como analisado")
-            else:
-                logger.warning(f"Post com ID {post_id} não encontrado")
-        except SQLAlchemyError as e:
-            logger.error(f"Erro ao atualizar post com ID {post_id}: {e}")
-            session.rollback()
-        except Exception as e:
-            logger.error(f"Erro inesperado ao atualizar post com ID {post_id}: {e}")
-            session.rollback()
-        finally:
-            session.close()
+        self.post_repository.update_post_analysis(post_id)
 
     def get_posts_to_analyze(self, batch_size: int = 10) -> List[Post]:
         """Gets posts that are not analyzed"""
-        session = self.Session()
         try:
-            offset = 0
-            posts_to_analyze = []
-            while True:
-                posts = session.query(PostDB).filter(PostDB.gemini_analysis == False).limit(batch_size).offset(
-                    offset).all()
-                if not posts:
-                    logger.info("Não há mais posts para analisar.")
-                    break
-                posts_to_analyze.extend([
-                    Post(
-                        title=post.title,
-                        id=post.id,
-                        url=post.url,
-                        text=post.text,
-                        num_comments=post.num_comments,
-                        ups=post.ups,
-                        comments=[
-                            Comment(
-                                author=comment.author,
-                                text=comment.text,
-                                created_utc=comment.created_utc,
-                                ups=comment.ups
-                            ) for comment in post.comments
-                        ]) for post in posts
-                ])
-                offset += batch_size
-            return posts_to_analyze
+            with self.database_manager.session() as session:
+                offset = 0
+                posts_to_analyze = []
+                while True:
+                    posts = session.query(PostDB).filter(PostDB.gemini_analysis == False).limit(batch_size).offset(
+                        offset).all()
+                    if not posts:
+                        logger.info("Não há mais posts para analisar.")
+                        break
+                    posts_to_analyze.extend([
+                        Post(
+                            title=post.title,
+                            id=post.id,
+                            url=post.url,
+                            text=post.text,
+                            num_comments=post.num_comments,
+                            ups=post.ups,
+                            comments=[
+                                Comment(
+                                    author=comment.author,
+                                    text=comment.text,
+                                    created_utc=comment.created_utc,
+                                    ups=comment.ups
+                                ) for comment in post.comments
+                            ]) for post in posts
+                    ])
+                    offset += batch_size
+                return posts_to_analyze
         except SQLAlchemyError as e:
             logger.error(f"Erro ao buscar posts para análise: {e}")
             return []
-        finally:
-            session.close()
+        except Exception as e:
+            logger.error(f"Erro inesperado ao buscar posts para análise: {e}")
+            return []
 ```
 
 ## src/adapters/reddit_adapter.py
 ```python
 # src/adapters/reddit_adapter.py
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Generator
 from datetime import datetime
 import praw
 from src.config.config import Config
 from src.core.ports.reddit_gateway import RedditGateway
 from src.core.entities import Post, Comment
 from src.core.utils.logger import setup_logger
-from src.core.utils.date_time import get_start_end_timestamps
 from src.core.utils.reddit_helpers import RedditHelpers
 from praw.exceptions import PRAWException
-from time import timezone
 
 logger = setup_logger(__name__)
 
@@ -1831,37 +1936,52 @@ class RedditAdapter(RedditGateway):
             logger.error(f"Erro ao conectar com o Reddit: {e}")
             self.reddit = None
 
-    def _fetch_posts(self, listing_generator: Any, batch_size: int, start_timestamp: Optional[int] = None,
-                     end_timestamp: Optional[int] = None, limit: Optional[int] = None) -> List[Post]:
+    def _fetch_posts_from_listing(self, listing_generator: Any, batch_size: int, limit: Optional[int] = None) -> Generator[List[Post], None, None]:
+        """
+            Fetch posts from a listing generator and transforms them into Post objects.
+
+            Args:
+                listing_generator: A PRAW ListingGenerator.
+                batch_size: Number of posts per batch.
+                limit: Optional limit of posts to fetch.
+
+            Yields:
+                A list of Post objects.
+            """
         posts = []
         posts_count = 0
-
         try:
             for submission in listing_generator:
                 comments = self._extract_comments(submission)
-                post = Post(
-                    title=submission.title,
-                    id=submission.id,
-                    url=submission.url,
-                    text=submission.selftext,
-                    num_comments=submission.num_comments,
-                    ups=submission.ups,
-                    comments=comments,
-                )
+                post = self._transform_submission_to_post(submission, comments)
                 posts.append(post)
                 posts_count += 1
+
                 if len(posts) >= batch_size:
                     yield posts
                     posts = []
-
+                if limit and posts_count >= limit:
+                    yield posts
+                    return
             if posts:
                 yield posts
         except PRAWException as e:
             logger.error(f"Erro ao buscar posts: {e}")
-            return []
         except Exception as e:
             logger.error(f"Erro inesperado ao buscar posts: {e}")
-            return []
+
+    @staticmethod
+    def _transform_submission_to_post(submission, comments: List[Comment]) -> Post:
+        """Transforms a PRAW submission object into a Post object."""
+        return Post(
+            title=submission.title,
+            id=submission.id,
+            url=submission.url,
+            text=submission.selftext,
+            num_comments=submission.num_comments,
+            ups=submission.ups,
+            comments=comments,
+        )
 
     def _extract_comments(self, submission) -> List[Comment]:
         try:
@@ -1869,17 +1989,10 @@ class RedditAdapter(RedditGateway):
             submission.comments.replace_more(limit=None)
 
             comments = []
-
             for comment in submission.comments:
                 comments.append(
-                    Comment(
-                        author=str(comment.author),
-                        text=comment.body,
-                        created_utc=datetime.fromtimestamp(comment.created_utc),
-                        ups=comment.ups
-                    )
+                    self._transform_comment_to_comment(comment)
                 )
-
             return comments
         except PRAWException as e:
             logger.error(f"Erro ao extrair comentários do post {submission.id}: {e}")
@@ -1887,6 +2000,16 @@ class RedditAdapter(RedditGateway):
         except Exception as e:
             logger.error(f"Erro inesperado ao extrair comentários do post {submission.id}: {e}")
             return []
+
+    @staticmethod
+    def _transform_comment_to_comment(comment) -> Comment:
+        """Transforms a PRAW comment object into a Comment object."""
+        return Comment(
+            author=str(comment.author),
+            text=comment.body,
+            created_utc=datetime.fromtimestamp(comment.created_utc),
+            ups=comment.ups
+        )
 
     def fetch_posts_from_subreddit(
             self,
@@ -1900,29 +2023,17 @@ class RedditAdapter(RedditGateway):
     ) -> List[Post]:
         """
         Extracts posts from a specific subreddit.
-
-        Args:
-        subreddit_name: Name of the subreddit.
-        sort_criteria: Sort criteria ('hot', 'top', 'new', 'controversial').
-        batch_size: Number of posts per page.
-        days_ago: Number of days to go back.
-        start_date: Start date for filtering posts (optional).
-        end_date: End date for filtering posts (optional).
-
-        Yields: Lists of Post objects.
         """
         if self.reddit is None:
             logger.error("Reddit não inicializado, impossível buscar posts.")
             return []
-
         try:
             subreddit = self.reddit.subreddit(subreddit_name)
-            start_timestamp, end_timestamp = get_start_end_timestamps(days_ago)
             listing_generator = RedditHelpers.get_listing_generator_by_sort(
                 self.reddit, subreddit, sort_criteria, start_date, end_date
             )
             posts = []
-            for batch in self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp, limit):
+            for batch in self._fetch_posts_from_listing(listing_generator, batch_size, limit):
                 posts.extend(batch)
             return posts
         except PRAWException as e:
@@ -1944,29 +2055,17 @@ class RedditAdapter(RedditGateway):
     ) -> List[Post]:
         """
         Extracts posts from Reddit using a search.
-
-        Args:
-        query: Search term.
-        sort_criteria: Sorting criteria ('relevance', 'top', 'new', 'comments').
-        batch_size: Number of posts per page.
-        days_ago: Number of days to go back.
-        start_date: Start date for filtering posts (optional).
-        end_date: End date for filtering posts (optional).
-
-        Yields:
-        Lists of Post objects.
         """
         if self.reddit is None:
             logger.error("Reddit não inicializado, impossível buscar posts.")
             return []
 
         try:
-            start_timestamp, end_timestamp = get_start_end_timestamps(days_ago)
             listing_generator = RedditHelpers.get_search_listing_generator_by_sort(
                 self.reddit, query, sort_criteria, start_date, end_date
             )
             posts = []
-            for batch in self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp, limit):
+            for batch in self._fetch_posts_from_listing(listing_generator, batch_size, limit):
                 posts.extend(batch)
             return posts
         except PRAWException as e:
@@ -1975,6 +2074,53 @@ class RedditAdapter(RedditGateway):
         except Exception as e:
             logger.error(f"Erro inesperado ao buscar posts: {e}")
             return []
+
+```
+
+## src/adapters/models/__init__.py
+```python
+# src/adapters/models/__init__.py
+from src.adapters.models.saas_idea import SaasIdea
+from src.adapters.models.paginated_response import PaginatedResponse
+
+```
+
+## src/adapters/models/paginated_response.py
+```python
+# src/adapters/models/paginated_response.py
+from typing import List
+from pydantic import BaseModel
+
+from src.adapters.models.saas_idea import SaasIdea
+
+
+class PaginatedResponse(BaseModel):
+    items: List[SaasIdea]
+    total: int
+    page: int
+    page_size: int
+
+```
+
+## src/adapters/models/saas_idea.py
+```python
+from typing import List, Optional
+from pydantic import BaseModel
+
+
+class SaasIdea(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    differentiators: Optional[List[str]] = None
+    features: Optional[List[str]] = None
+    implementation_score: Optional[int] = None
+    market_viability_score: Optional[int] = None
+    category: Optional[str] = None
+    post_id: str
+
+    class Config:
+        from_attributes = True
 
 ```
 
@@ -2012,12 +2158,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.config.config import Config
+from src.adapters.database_adapter import DatabaseAdapter
 from src.core.ports.saas_ideas_gateway import SaasIdeasGateway
 from src.adapters.saas_ideas_adapter import SaasIdeasAdapter
 from src.core.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
+
 
 class SaasIdea(BaseModel):
     id: int
@@ -2029,8 +2176,10 @@ class SaasIdea(BaseModel):
     market_viability_score: Optional[int] = None
     category: Optional[str] = None
     post_id: str
+
     class Config:
         from_attributes = True
+
 
 class PaginatedResponse(BaseModel):
     items: List[SaasIdea]
@@ -2038,10 +2187,11 @@ class PaginatedResponse(BaseModel):
     page: int
     page_size: int
 
+
 app = FastAPI()
 
 origins = [
-    "http://localhost:3000", #  Seu frontend
+    "http://localhost:3000",
     "https://ideaforge.bemysaas.com.br"
 ]
 
@@ -2053,22 +2203,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def get_saas_ideas_adapter():
+
+def get_database_adapter():
+    """Dependency to get the database adapter"""
+    adapter = DatabaseAdapter()
+    return adapter
+
+
+def get_saas_ideas_adapter(database_adapter: DatabaseAdapter = Depends(get_database_adapter)):
+    """Dependency to get the saas ideas adapter"""
     adapter = SaasIdeasAdapter()
     return adapter
 
 
 @app.get("/saas_ideas", response_model=PaginatedResponse)
 def list_saas_ideas(
-    category: Optional[str] = Query(None),
-    features: Optional[str] = Query(None),
-    differentiators: Optional[str] = Query(None),
-    description: Optional[str] = Query(None),
-    page: int = Query(1, gt=0),
-    page_size: int = Query(10, gt=0),
-    order_by: Optional[str] = Query(None, enum=["implementation_score", "market_viability_score", "category"]),
-    order_direction: Optional[str] = Query("asc", enum=["asc", "desc"]),
-    saas_ideas_gateway: SaasIdeasGateway = Depends(get_saas_ideas_adapter)
+        category: Optional[str] = Query(None),
+        features: Optional[str] = Query(None),
+        differentiators: Optional[str] = Query(None),
+        description: Optional[str] = Query(None),
+        page: int = Query(1, gt=0),
+        page_size: int = Query(10, gt=0),
+        order_by: Optional[str] = Query(None, enum=["implementation_score", "market_viability_score", "category"]),
+        order_direction: Optional[str] = Query("asc", enum=["asc", "desc"]),
+        saas_ideas_gateway: SaasIdeasGateway = Depends(get_saas_ideas_adapter)
 ):
     try:
         saas_ideas = saas_ideas_gateway.list_saas_ideas(
@@ -2085,14 +2243,15 @@ def list_saas_ideas(
         logger.error(f"Erro ao buscar ideias Saas: {e}")
         raise HTTPException(status_code=500, detail="Erro ao buscar ideias Saas no banco de dados")
 
-    if not saas_ideas["items"]:
+    if not saas_ideas.items:  # Corrigido para usar saas_ideas.items
         raise HTTPException(status_code=404, detail="Nenhuma ideia SaaS encontrada com os filtros fornecidos.")
 
     return saas_ideas
 
+
 @app.get("/saas_categories", response_model=List[str])
 def list_saas_categories(
-    saas_ideas_gateway: SaasIdeasGateway = Depends(get_saas_ideas_adapter)
+        saas_ideas_gateway: SaasIdeasGateway = Depends(get_saas_ideas_adapter)
 ):
     try:
         categories = saas_ideas_gateway.list_all_categories()
@@ -2104,5 +2263,6 @@ def list_saas_categories(
         raise HTTPException(status_code=404, detail="Nenhuma categoria SaaS encontrada.")
 
     return categories
+
 ```
 

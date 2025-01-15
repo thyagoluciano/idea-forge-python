@@ -1,7 +1,8 @@
 # src/database/repositories/saas_idea_repository.py
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.database.models.database_models import SaasIdeaDB, PostDB
+from src.database.models.saas_idea_db import SaasIdeaDB
+from src.database.models.post_db import PostDB
 from src.core.utils.logger import setup_logger
 
 logger = setup_logger(__name__)

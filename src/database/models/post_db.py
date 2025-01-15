@@ -1,13 +1,12 @@
 # src/database/models/post_db.py
 from sqlalchemy import Column, String, Integer, DateTime, Boolean
 from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
-
-Base = declarative_base()
+from src.database.models.database_models import Base
 
 
 class PostDB(Base):
     __tablename__ = "posts"
+    __table_args__ = {'extend_existing': True}
 
     id = Column(String, primary_key=True)
     title = Column(String, nullable=False)

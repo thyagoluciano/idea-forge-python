@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
 
-from src.database.models.database_models import PostDB, CommentDB
+from src.database.models.post_db import PostDB  # Importe PostDB de post_db.py
+from src.database.models.comment_db import CommentDB  # Importe CommentDB de comment_db.py
 from src.core.entities import Post
 from src.core.utils.logger import setup_logger
 

@@ -7,8 +7,7 @@ from src.config.config import Config
 from src.core.ports.saas_ideas_gateway import SaasIdeasGateway
 from src.core.utils.logger import setup_logger
 from src.adapters.models import SaasIdea, PaginatedResponse
-from src.database.models import SaasIdeaDB, PostDB, CommentDB
-from sqlalchemy.sql import select, func
+from src.database.models.saas_idea_db import SaasIdeaDB
 
 logger = setup_logger(__name__)
 
@@ -20,16 +19,10 @@ class SaasIdeasAdapter(SaasIdeasGateway):
         self.engine = create_engine(url)
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
 
-    @staticmethod
-    def _build_saas_ideas_query(
-            db: sessionmaker,
-            category: Optional[str] = None,
-            features: Optional[str] = None,
-            differentiators: Optional[str] = None,
-            description: Optional[str] = None
-    ) -> Query:
-        with db() as session:  # create the session
-            query: Query = session.query(SaasIdeaDB)  # use the session to create the query
+    def _build_saas_ideas_query(self, db: sessionmaker, category: Optional[str] = None, features: Optional[str] = None,
+                                differentiators: Optional[str] = None, description: Optional[str] = None) -> Query:
+        with db() as session:
+            query: Query = session.query(SaasIdeaDB)
 
             if category is not None:
                 query = query.filter(SaasIdeaDB.category == category)
@@ -42,7 +35,8 @@ class SaasIdeasAdapter(SaasIdeasGateway):
 
             return query
 
-    def _apply_order_by(self, query: Query, order_by: Optional[str] = None,
+    @staticmethod
+    def _apply_order_by(query: Query, order_by: Optional[str] = None,
                         order_direction: Optional[str] = "asc") -> Query:
         if order_by:
             order_by_column = getattr(SaasIdeaDB, order_by)
@@ -58,19 +52,14 @@ class SaasIdeasAdapter(SaasIdeasGateway):
         items: List[Any] = query.offset((page - 1) * page_size).limit(page_size).all()
         return items, total
 
-    def _execute_saas_ideas_query(
-            self, db: sessionmaker,
-            category: Optional[str] = None,
-            features: Optional[str] = None,
-            differentiators: Optional[str] = None,
-            description: Optional[str] = None,
-            page: int = 1, page_size: int = 10,
-            order_by: Optional[str] = None,
-            order_direction: Optional[str] = "asc"
-    ) -> Dict:
+    def _execute_saas_ideas_query(self, db: sessionmaker, category: Optional[str] = None,
+                                  features: Optional[str] = None,
+                                  differentiators: Optional[str] = None, description: Optional[str] = None,
+                                  page: int = 1, page_size: int = 10, order_by: Optional[str] = None,
+                                  order_direction: Optional[str] = "asc") -> Dict:
         try:
             with db() as session:
-                query: Query = self._build_saas_ideas_query(session, category, features, differentiators, description)
+                query: Query = self._build_saas_ideas_query(db, category, features, differentiators, description)
                 query = self._apply_order_by(query, order_by, order_direction)
                 items, total = self._paginate_query(query, page, page_size)
                 return {
@@ -100,17 +89,9 @@ class SaasIdeasAdapter(SaasIdeasGateway):
             order_direction: Optional[str] = "asc"
     ) -> PaginatedResponse:
         try:
-            response = self._execute_saas_ideas_query(
-                self.SessionLocal,
-                category,
-                features,
-                differentiators,
-                description,
-                page,
-                page_size,
-                order_by,
-                order_direction
-            )
+            response = self._execute_saas_ideas_query(self.SessionLocal, category, features, differentiators,
+                                                      description, page,
+                                                      page_size, order_by, order_direction)
             return PaginatedResponse(**response)
         except SQLAlchemyError as e:
             logger.error(f"Erro ao buscar ideias Saas: {e}")
@@ -123,7 +104,7 @@ class SaasIdeasAdapter(SaasIdeasGateway):
         db = self.SessionLocal()
         try:
             categories = db.query(SaasIdeaDB.category).distinct()
-            return [category.scalar() for category in categories]
+            return [category[0] for category in categories]
         except SQLAlchemyError as e:
             logger.error(f"Erro ao buscar categorias: {e}")
             return []

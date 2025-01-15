@@ -3,7 +3,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 from src.config.config import Config
-from src.database.models.database_models import Base
+from src.database.models.database_models import Base, metadata
 from src.core.utils.logger import setup_logger
 from contextlib import contextmanager
 
@@ -14,14 +14,15 @@ class DatabaseManager:
     def __init__(self):
         self.config = Config()
         self.engine = self._create_engine()
-        Base.metadata.create_all(self.engine)
+        # Alterado para criar as tabelas em ordem
+        metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
 
     def _create_engine(self):
         """Creates and returns the database engine."""
         try:
             url = f"postgresql://{self.config.POSTGRES_USER}:{self.config.POSTGRES_PASSWORD}@{self.config.POSTGRES_HOST}:{self.config.POSTGRES_PORT}/{self.config.POSTGRES_DB}"
-            engine = create_engine(url)
+            engine = create_engine(url, echo=False)
             logger.info("Conexão com o banco de dados estabelecida com sucesso.")
             return engine
         except SQLAlchemyError as e:

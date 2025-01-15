@@ -1,16 +1,14 @@
 # src/adapters/database_adapter.py
 from typing import List, Optional
-
 from sqlalchemy.exc import SQLAlchemyError
-
 from src.core.ports.database_gateway import DatabaseGateway
 from src.database.database_manager import DatabaseManager
-from src.database.models.database_models import ExtractionConfigDB
+from src.database.repositories.post_repository import PostRepository
 from src.database.repositories.saas_idea_repository import SaasIdeaRepository
 from src.database.repositories.extraction_config_repository import ExtractionConfigRepository
-from src.database.repositories.post_repository import PostRepository
 from src.core.utils.logger import setup_logger
-from src.core.entities import Post
+from src.core.entities import Post, Comment
+from src.database.models.post_db import PostDB
 
 logger = setup_logger(__name__)
 
@@ -44,7 +42,7 @@ class DatabaseAdapter(DatabaseGateway):
         """Adds a new extraction config."""
         self.extraction_config_repository.add_extraction_config(config_data)
 
-    def get_all_extraction_configs(self) -> list[ExtractionConfigDB]:
+    def get_all_extraction_configs(self) -> List[dict]:
        """Gets all extraction configurations from the database."""
        return self.extraction_config_repository.get_all_extraction_configs()
 
@@ -58,8 +56,6 @@ class DatabaseAdapter(DatabaseGateway):
 
     def get_posts_to_analyze(self, batch_size: int = 10) -> List[Post]:
         """Gets posts that are not analyzed"""
-        from src.database.models.database_models import PostDB, CommentDB
-        from src.core.entities import Post, Comment
         try:
             with self.database_manager.session() as session:
                 offset = 0

@@ -8,8 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 from src.adapters.database_adapter import DatabaseAdapter
 from src.core.use_cases.extraction_use_case import ExtractionUseCase
 from src.adapters.reddit_adapter import RedditAdapter
-from src.database.models.database_models import ExtractionConfigDB
 from src.core.utils.logger import setup_logger
+from src.database.models.extraction_config_db import ExtractionConfigDB
 
 logger = setup_logger(__name__)
 
