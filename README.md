@@ -6,7 +6,7 @@ Corrigir os Testes: Resolva todas as falhas nos testes existentes.
 
 [x] - Refatorar GeminiAdapter: Modularize a lógica de análise do Gemini.
 
-Refatorar SaasIdeasAdapter: Simplifique a lógica de busca e paginação, encapsulando a lógica do ORM e padronizando a resposta da busca com Pydantic.
+[x] - Refatorar SaasIdeasAdapter: Simplifique a lógica de busca e paginação, encapsulando a lógica do ORM e padronizando a resposta da busca com Pydantic.
 
 Aprimorar Schedulers: Adicione logs e tratamentos de erro mais informativos, além da opção de interval.
 

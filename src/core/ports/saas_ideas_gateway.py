@@ -1,6 +1,7 @@
 # src/core/ports/saas_ideas_gateway.py
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict
+from src.adapters.models import PaginatedResponse
 
 
 class SaasIdeasGateway(ABC):
@@ -17,7 +18,7 @@ class SaasIdeasGateway(ABC):
             page_size: int = 10,
             order_by: Optional[str] = None,
             order_direction: Optional[str] = "asc"
-    ) -> Dict:
+    ) -> PaginatedResponse:
         pass
 
     @abstractmethod
