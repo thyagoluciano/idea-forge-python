@@ -26,7 +26,7 @@ def main():
     database_adapter = DatabaseAdapter()
     configs = database_adapter.get_all_extraction_configs()
     for config in configs:
-        if config.subreddit_name == "SaaS":
+        if config.subreddit_name == "programming":
             extraction_scheduler.run_extraction_now(config)
 
     analysis_scheduler.run_analysis_now()

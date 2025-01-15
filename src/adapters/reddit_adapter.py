@@ -1,15 +1,13 @@
 # src/adapters/reddit_adapter.py
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Generator
 from datetime import datetime
 import praw
 from src.config.config import Config
 from src.core.ports.reddit_gateway import RedditGateway
 from src.core.entities import Post, Comment
 from src.core.utils.logger import setup_logger
-from src.core.utils.date_time import get_start_end_timestamps
 from src.core.utils.reddit_helpers import RedditHelpers
 from praw.exceptions import PRAWException
-from time import timezone
 
 logger = setup_logger(__name__)
 
@@ -28,37 +26,52 @@ class RedditAdapter(RedditGateway):
             logger.error(f"Erro ao conectar com o Reddit: {e}")
             self.reddit = None
 
-    def _fetch_posts(self, listing_generator: Any, batch_size: int, start_timestamp: Optional[int] = None,
-                     end_timestamp: Optional[int] = None, limit: Optional[int] = None) -> List[Post]:
+    def _fetch_posts_from_listing(self, listing_generator: Any, batch_size: int, limit: Optional[int] = None) -> Generator[List[Post], None, None]:
+        """
+            Fetch posts from a listing generator and transforms them into Post objects.
+
+            Args:
+                listing_generator: A PRAW ListingGenerator.
+                batch_size: Number of posts per batch.
+                limit: Optional limit of posts to fetch.
+
+            Yields:
+                A list of Post objects.
+            """
         posts = []
         posts_count = 0
-
         try:
             for submission in listing_generator:
                 comments = self._extract_comments(submission)
-                post = Post(
-                    title=submission.title,
-                    id=submission.id,
-                    url=submission.url,
-                    text=submission.selftext,
-                    num_comments=submission.num_comments,
-                    ups=submission.ups,
-                    comments=comments,
-                )
+                post = self._transform_submission_to_post(submission, comments)
                 posts.append(post)
                 posts_count += 1
+
                 if len(posts) >= batch_size:
                     yield posts
                     posts = []
-
+                if limit and posts_count >= limit:
+                    yield posts
+                    return
             if posts:
                 yield posts
         except PRAWException as e:
             logger.error(f"Erro ao buscar posts: {e}")
-            return []
         except Exception as e:
             logger.error(f"Erro inesperado ao buscar posts: {e}")
-            return []
+
+    @staticmethod
+    def _transform_submission_to_post(submission, comments: List[Comment]) -> Post:
+        """Transforms a PRAW submission object into a Post object."""
+        return Post(
+            title=submission.title,
+            id=submission.id,
+            url=submission.url,
+            text=submission.selftext,
+            num_comments=submission.num_comments,
+            ups=submission.ups,
+            comments=comments,
+        )
 
     def _extract_comments(self, submission) -> List[Comment]:
         try:
@@ -66,17 +79,10 @@ class RedditAdapter(RedditGateway):
             submission.comments.replace_more(limit=None)
 
             comments = []
-
             for comment in submission.comments:
                 comments.append(
-                    Comment(
-                        author=str(comment.author),
-                        text=comment.body,
-                        created_utc=datetime.fromtimestamp(comment.created_utc),
-                        ups=comment.ups
-                    )
+                    self._transform_comment_to_comment(comment)
                 )
-
             return comments
         except PRAWException as e:
             logger.error(f"Erro ao extrair comentários do post {submission.id}: {e}")
@@ -84,6 +90,16 @@ class RedditAdapter(RedditGateway):
         except Exception as e:
             logger.error(f"Erro inesperado ao extrair comentários do post {submission.id}: {e}")
             return []
+
+    @staticmethod
+    def _transform_comment_to_comment(comment) -> Comment:
+        """Transforms a PRAW comment object into a Comment object."""
+        return Comment(
+            author=str(comment.author),
+            text=comment.body,
+            created_utc=datetime.fromtimestamp(comment.created_utc),
+            ups=comment.ups
+        )
 
     def fetch_posts_from_subreddit(
             self,
@@ -97,29 +113,17 @@ class RedditAdapter(RedditGateway):
     ) -> List[Post]:
         """
         Extracts posts from a specific subreddit.
-
-        Args:
-        subreddit_name: Name of the subreddit.
-        sort_criteria: Sort criteria ('hot', 'top', 'new', 'controversial').
-        batch_size: Number of posts per page.
-        days_ago: Number of days to go back.
-        start_date: Start date for filtering posts (optional).
-        end_date: End date for filtering posts (optional).
-
-        Yields: Lists of Post objects.
         """
         if self.reddit is None:
             logger.error("Reddit não inicializado, impossível buscar posts.")
             return []
-
         try:
             subreddit = self.reddit.subreddit(subreddit_name)
-            start_timestamp, end_timestamp = get_start_end_timestamps(days_ago)
             listing_generator = RedditHelpers.get_listing_generator_by_sort(
                 self.reddit, subreddit, sort_criteria, start_date, end_date
             )
             posts = []
-            for batch in self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp, limit):
+            for batch in self._fetch_posts_from_listing(listing_generator, batch_size, limit):
                 posts.extend(batch)
             return posts
         except PRAWException as e:
@@ -141,29 +145,17 @@ class RedditAdapter(RedditGateway):
     ) -> List[Post]:
         """
         Extracts posts from Reddit using a search.
-
-        Args:
-        query: Search term.
-        sort_criteria: Sorting criteria ('relevance', 'top', 'new', 'comments').
-        batch_size: Number of posts per page.
-        days_ago: Number of days to go back.
-        start_date: Start date for filtering posts (optional).
-        end_date: End date for filtering posts (optional).
-
-        Yields:
-        Lists of Post objects.
         """
         if self.reddit is None:
             logger.error("Reddit não inicializado, impossível buscar posts.")
             return []
 
         try:
-            start_timestamp, end_timestamp = get_start_end_timestamps(days_ago)
             listing_generator = RedditHelpers.get_search_listing_generator_by_sort(
                 self.reddit, query, sort_criteria, start_date, end_date
             )
             posts = []
-            for batch in self._fetch_posts(listing_generator, batch_size, start_timestamp, end_timestamp, limit):
+            for batch in self._fetch_posts_from_listing(listing_generator, batch_size, limit):
                 posts.extend(batch)
             return posts
         except PRAWException as e:

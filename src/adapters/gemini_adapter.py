@@ -26,23 +26,9 @@ class GeminiAdapter(GeminiGateway):
         self.retry_delay = 10  # Tempo de espera entre as tentativas em segundos
         self.max_retries = 3  # Número máximo de tentativas
 
-    def analyze_text(self, text: str, post_title: str) -> Optional[Dict]:
-        """
-        Analisa um texto usando a API do Google Gemini, garantindo um formato de resposta JSON consistente.
-
-        Args:
-          text: texto a ser analisado
-          post_title: titulo do post para inserir no json de resposta
-        Returns:
-           Um dicionário contendo o title, description, category e score.
-        """
-        if not self.model:
-            logger.error("Modelo Gemini não está inicializado.")
-            return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
-
-        retries = 0
-        while retries < self.max_retries:
-            prompt = f"""
+    def _build_prompt(self, text: str, post_title: str) -> str:
+        """Builds the prompt for the Gemini API."""
+        return f"""
             You are an assistant specialized in content analysis to identify opportunities for the development of SaaS products. Your task is to analyze a text from a post and its comments, and generate insights about pains, problems, and solutions reported, formatting the response in a specific JSON structure. All your responses must be in english
 
             Instructions:
@@ -110,21 +96,19 @@ class GeminiAdapter(GeminiGateway):
 
             Strictly adhere to the JSON structure, without adding any extra fields and without removing any mandatory fields.
             """
+
+    def _call_gemini_api(self, prompt: str) -> Optional[str]:
+        """Calls the Gemini API with retry logic."""
+        if not self.model:
+            logger.error("Modelo Gemini não está inicializado.")
+            return None
+
+        retries = 0
+        while retries < self.max_retries:
             try:
                 with self.semaphore:
                     response = self.model.generate_content(prompt)
-                    json_str = response.text.replace("```json", "").replace("```", "")
-                    response_json = json.loads(json_str)
-
-                    if not response_json.get("post_analysis") or not isinstance(
-                            response_json.get("post_analysis").get("insights"), list):
-                        logger.warning("Formato da resposta do Gemini está incorreta, retornando insights vazios")
-                        return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
-
-                    return response_json
-            except json.JSONDecodeError as e:
-                logger.error(f"Erro ao decodificar resposta JSON do Gemini: {e}")
-                return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
+                    return response.text
             except Exception as e:
                 logger.error(f"Erro ao analisar com Gemini: {e}")
                 if "429 Resource has been exhausted" in str(e):
@@ -133,5 +117,33 @@ class GeminiAdapter(GeminiGateway):
                         f"Erro de quota do Gemini, tentando novamente em {self.retry_delay} segundos (tentativa {retries}/{self.max_retries})")
                     time.sleep(self.retry_delay)
                 else:
-                    return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
-        return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
+                    return None
+        return None
+
+    def _process_gemini_response(self, response_text: Optional[str], post_title: str) -> Dict:
+        """Processes the response from the Gemini API."""
+        if not response_text:
+            return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
+        try:
+            json_str = response_text.replace("```json", "").replace("```", "")
+            response_json = json.loads(json_str)
+
+            if not response_json.get("post_analysis") or not isinstance(
+                    response_json.get("post_analysis").get("insights"), list):
+                logger.warning("Formato da resposta do Gemini está incorreta, retornando insights vazios")
+                return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
+            return response_json
+        except json.JSONDecodeError as e:
+            logger.error(f"Erro ao decodificar resposta JSON do Gemini: {e}")
+            return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
+        except Exception as e:
+            logger.error(f"Erro inesperado ao processar resposta do Gemini: {e}")
+            return {"post_analysis": {"insights": [], "post_description": "", "post_title": post_title}}
+
+    def analyze_text(self, text: str, post_title: str) -> Optional[Dict]:
+        """
+        Analisa um texto usando a API do Google Gemini, garantindo um formato de resposta JSON consistente.
+        """
+        prompt = self._build_prompt(text, post_title)
+        response_text = self._call_gemini_api(prompt)
+        return self._process_gemini_response(response_text, post_title)

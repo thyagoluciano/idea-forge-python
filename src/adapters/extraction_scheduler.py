@@ -8,6 +8,8 @@ from src.core.use_cases.extraction_use_case import ExtractionUseCase
 from src.adapters.reddit_adapter import RedditAdapter
 from src.database.models.database_models import ExtractionConfigDB
 from src.core.utils.logger import setup_logger
+from src.database.database_manager import DatabaseManager
+
 
 logger = setup_logger(__name__)
 
@@ -23,6 +25,7 @@ class ExtractionScheduler:
     def __init__(self):
         self.scheduler = BlockingScheduler()
         self.database_adapter = DatabaseAdapter()
+        self.database_manager = DatabaseManager()  # Adiciona o DatabaseManager
         self.reddit_adapter = RedditAdapter()
         self.extraction_use_case = ExtractionUseCase(self.reddit_adapter, self.database_adapter)
         self.job_interval = 5  # intervalo entre os jobs em segundos
@@ -35,15 +38,13 @@ class ExtractionScheduler:
 
     def _add_existing_jobs(self):
         """Adds all enabled extraction configurations as jobs."""
-        session = self.database_adapter.Session()
         try:
-            configs = session.query(ExtractionConfigDB).filter(ExtractionConfigDB.enabled == True).all()
-            for config in configs:
-                self._add_job(config)
+            with self.database_manager.session() as session: # Usa o context manager
+                configs = session.query(ExtractionConfigDB).filter(ExtractionConfigDB.enabled == True).all()
+                for config in configs:
+                    self._add_job(config)
         except Exception as e:
             logger.error(f"Erro ao buscar subreddits no banco de dados: {e}")
-        finally:
-            session.close()
 
     def _add_job(self, config):
         """Adds a single job to the scheduler."""
@@ -70,22 +71,22 @@ class ExtractionScheduler:
         logger.info(f"Iniciando extração com ID {config.id}")
         try:
             if config.type == "subreddit":
-                self.extraction_use_case.extract_posts_from_subreddit(
-                    config.subreddit_name,
-                    config.sort_criteria,
-                    config.batch_size,
-                    config.days_ago,
-                    config.limit
-                )
+                 self.extraction_use_case.extract_posts_from_subreddit(
+                     config.subreddit_name,
+                     config.sort_criteria,
+                     config.batch_size,
+                     config.days_ago,
+                     config.limit
+                 )
 
             elif config.type == "search":
-                self.extraction_use_case.extract_posts_from_search(
+                 self.extraction_use_case.extract_posts_from_search(
                     config.query,
                     config.sort_criteria,
                     config.batch_size,
                     config.days_ago,
                     config.limit
-                )
+                 )
             self.database_adapter.update_extraction_config(config.id)
             logger.info(f"Extração com ID {config.id} finalizada com sucesso.")
         except Exception as e:
