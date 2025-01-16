@@ -24,42 +24,7 @@ uvicorn~=0.34.0
 
 ## Dockerfile
 ```
-# --- Stage 1: Builder Stage ---
-FROM python:3.11-alpine3.19 AS builder
 
-WORKDIR /app
-
-# Install build dependencies
-RUN apk add --no-cache gcc musl-dev build-base
-
-# Copy only requirements file
-COPY requirements.txt .
-
-# Upgrade pip and setuptools
-RUN pip install --no-cache-dir --upgrade pip setuptools
-
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-
-# --- Stage 2: Final Stage ---
-FROM python:3.11-alpine3.19
-
-WORKDIR /app
-
-# Copy application from builder stage
-COPY --from=builder /app /app
-
-# Copy source code
-COPY . .
-
-# Remove unnecessary files
-RUN rm -rf __pycache__ && \
-    find . -name "*.pyc" -delete && \
-    find . -name "*.pyo" -delete
-
-# Run application
-CMD ["python", "src/main.py"]
 ```
 
 ## docker-compose.yml
@@ -1579,7 +1544,8 @@ class SaasIdeasAdapter(SaasIdeasGateway):
 
             return query
 
-    def _apply_order_by(self, query: Query, order_by: Optional[str] = None,
+    @staticmethod
+    def _apply_order_by(query: Query, order_by: Optional[str] = None,
                         order_direction: Optional[str] = "asc") -> Query:
         if order_by:
             order_by_column = getattr(SaasIdeaDB, order_by)
@@ -1589,7 +1555,8 @@ class SaasIdeasAdapter(SaasIdeasGateway):
                 query = query.order_by(desc(order_by_column))
         return query
 
-    def _paginate_query(self, query: Query, page: int, page_size: int) -> tuple[List[Any], int]:
+    @staticmethod
+    def _paginate_query(query: Query, page: int, page_size: int) -> tuple[List[Any], int]:
         total: int = query.count()
         items: List[Any] = query.offset((page - 1) * page_size).limit(page_size).all()
         return items, total
@@ -1646,7 +1613,7 @@ class SaasIdeasAdapter(SaasIdeasGateway):
         db = self.SessionLocal()
         try:
             categories = db.query(SaasIdeaDB.category).distinct()
-            return [category.scalar() for category in categories]
+            return [category[0] for category in categories]
         except SQLAlchemyError as e:
             logger.error(f"Erro ao buscar categorias: {e}")
             return []

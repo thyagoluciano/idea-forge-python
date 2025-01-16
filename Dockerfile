@@ -1,36 +1,31 @@
-# --- Stage 1: Builder Stage ---
-FROM python:3.11-alpine3.19 AS builder
+# Use uma imagem base do Python 3.11.
+FROM python:3.11.5-slim-bookworm AS builder
 
+# Define o diretório de trabalho dentro do container.
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache gcc musl-dev build-base
+# Copia o arquivo requirements.txt para o diretório de trabalho.
+COPY requirements.txt ./
 
-# Copy only requirements file
-COPY requirements.txt .
-
-# Upgrade pip and setuptools
-RUN pip install --no-cache-dir --upgrade pip setuptools
-
-# Install dependencies
+# Instala as dependências usando o pip.
 RUN pip install --no-cache-dir -r requirements.txt
 
-
-# --- Stage 2: Final Stage ---
-FROM python:3.11-alpine3.19
-
-WORKDIR /app
-
-# Copy application from builder stage
-COPY --from=builder /app /app
-
-# Copy source code
+# Copia o restante do projeto para o diretório de trabalho.
 COPY . .
 
-# Remove unnecessary files
-RUN rm -rf __pycache__ && \
-    find . -name "*.pyc" -delete && \
-    find . -name "*.pyo" -delete
+# Define a imagem de produção com o mínimo de dependências.
+FROM python:3.11.5-slim-bookworm
 
-# Run application
+# Define o diretório de trabalho dentro do container.
+WORKDIR /app
+
+# Copia os arquivos de instalação e dependências
+COPY --from=builder /app/requirements.txt ./
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/.env ./.env
+
+# Instala as dependências apenas em runtime
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Define o comando para executar a aplicação.
 CMD ["python", "src/main.py"]
