@@ -22,9 +22,16 @@ WORKDIR /app
 # Copia os arquivos de instalação e dependências do builder stage
 COPY --from=builder /app/requirements.txt ./
 COPY --from=builder /app/src ./src
+COPY --from=builder /app/.env ./.env
 
 # Instala as dependências apenas em runtime
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Adiciona o diretorio src ao PYTHONPATH
+ENV PYTHONPATH=/app/src
+
+# Lista o conteúdo do diretório /app/src
+RUN ls -la /app/src
 
 # Define o comando para executar a aplicação.
 CMD ["python", "src/main.py"]

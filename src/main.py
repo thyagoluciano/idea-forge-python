@@ -1,7 +1,13 @@
 # src/main.py
+import os
+import sys
 import time
 import threading
 import uvicorn
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from adapters.api import main as api
 
 from src.adapters.extraction_scheduler import ExtractionScheduler
 from src.adapters.analysis_scheduler import AnalysisScheduler
@@ -23,11 +29,11 @@ def main():
 
     # Força a execução imediata de uma extração
 
-    database_adapter = DatabaseAdapter()
-    configs = database_adapter.get_all_extraction_configs()
-    for config in configs:
-        if config.subreddit_name == "bigcommerce":
-            extraction_scheduler.run_extraction_now(config)
+    # database_adapter = DatabaseAdapter()
+    # configs = database_adapter.get_all_extraction_configs()
+    # for config in configs:
+    #     if config.subreddit_name == "bigcommerce":
+    #         extraction_scheduler.run_extraction_now(config)
 
     analysis_scheduler.run_analysis_now()
 
@@ -46,7 +52,6 @@ def main():
 
 def run_api():
     """Runs the FastAPI application."""
-    import src.adapters.api.main as api
     uvicorn.run(api.app, host="0.0.0.0", port=8081)
 
 
