@@ -19,7 +19,7 @@ FROM python:3.11.5-slim-bookworm
 # Define o diretório de trabalho dentro do container.
 WORKDIR /app
 
-# Copia os arquivos de instalação e dependências
+# Copia os arquivos de instalação e dependências do builder stage
 COPY --from=builder /app/requirements.txt ./
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/.env ./.env
