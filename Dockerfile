@@ -22,7 +22,6 @@ WORKDIR /app
 # Copia os arquivos de instalação e dependências do builder stage
 COPY --from=builder /app/requirements.txt ./
 COPY --from=builder /app/src ./src
-COPY --from=builder /app/.env ./.env
 
 # Instala as dependências apenas em runtime
 RUN pip install --no-cache-dir -r requirements.txt
