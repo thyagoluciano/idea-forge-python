@@ -1,4 +1,6 @@
 # src/adapters/gemini_adapter.py
+import os
+
 import google.generativeai as genai
 import json
 import threading
@@ -23,7 +25,7 @@ class GeminiAdapter(GeminiGateway):
             logger.error(f"Erro ao conectar com o Gemini: {e}")
             self.model = None
         self.semaphore = threading.Semaphore(1)  # Limita para 1 thread por vez
-        self.retry_delay = 10  # Tempo de espera entre as tentativas em segundos
+        self.retry_delay = int(os.getenv("GEMINI_RETRY_DELAY", 20))  # Tempo de espera entre as tentativas em segundos
         self.max_retries = 3  # Número máximo de tentativas
 
     def _build_prompt(self, text: str, post_title: str) -> str:
