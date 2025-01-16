@@ -32,5 +32,7 @@ ENV PYTHONPATH=/app/src
 # Lista o conteúdo do diretório /app/src
 RUN ls -la /app/src
 
+EXPOSE 8081
+
 # Define o comando para executar a aplicação.
 CMD ["python", "src/main.py"]
