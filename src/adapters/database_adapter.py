@@ -72,8 +72,10 @@ class DatabaseAdapter(DatabaseGateway):
                 offset = 0
                 posts_to_analyze = []
                 while True:
-                    posts = session.query(PostDB).filter(PostDB.gemini_analysis == False).limit(batch_size).offset(
-                        offset).all()
+                    posts = session.query(PostDB).filter(
+                        PostDB.gemini_analysis == False
+                    ).limit(batch_size).offset(offset).all()
+
                     if not posts:
                         logger.info("Não há mais posts para analisar.")
                         break

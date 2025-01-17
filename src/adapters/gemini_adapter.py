@@ -18,16 +18,22 @@ logger = setup_logger(__name__)
 class GeminiAdapter(GeminiGateway):
     def __init__(self):
         self.config = Config()
-        try:
-            genai.configure(api_key=self.config.GOOGLE_API_KEY)
-            self.model = genai.GenerativeModel(self.config.GEMINI_MODEL)
-            logger.info("Conexão com Gemini estabelecida com sucesso.")
-        except Exception as e:
-            logger.error(f"Erro ao conectar com o Gemini: {e}")
-            self.model = None
+        self.api_keys = self.config.google_api_keys
+        self.current_key_index = 0
+        self._configure_gemini()
         self.semaphore = threading.Semaphore(1)  # Limita para 1 thread por vez
         self.retry_delay = int(os.getenv("GEMINI_RETRY_DELAY", 20))  # Tempo de espera entre as tentativas em segundos
         self.max_retries = 3  # Número máximo de tentativas
+
+    def _configure_gemini(self):
+        """Configures the Gemini API client with the current API key."""
+        try:
+            genai.configure(api_key=self.api_keys[self.current_key_index])
+            self.model = genai.GenerativeModel(self.config.GEMINI_MODEL)
+            logger.info(f"Conexão com Gemini estabelecida com sucesso usando chave {self.current_key_index}.")
+        except Exception as e:
+            logger.error(f"Erro ao conectar com o Gemini usando chave {self.current_key_index}: {e}")
+            self.model = None
 
     def _build_prompt(self, text: str, post_title: str) -> str:
         """Builds the prompt for the Gemini API."""
@@ -147,15 +153,32 @@ class GeminiAdapter(GeminiGateway):
                     response = self.model.generate_content(prompt)
                     return response.text
             except Exception as e:
-                logger.error(f"Erro ao analisar com Gemini: {e}")
                 if "429 Resource has been exhausted" in str(e):
                     retries += 1
                     logger.warning(
-                        f"Erro de quota do Gemini, tentando novamente em {self.retry_delay} segundos (tentativa {retries}/{self.max_retries})")
+                        f"Erro de quota do Gemini, tentando novamente com a chave atual em {self.retry_delay} segundos (tentativa {retries}/{self.max_retries})")
                     time.sleep(self.retry_delay)
+                    if retries >= self.max_retries:
+                        if self._rotate_api_key():
+                            retries = 0
+                            logger.info(f"Rotacionando API Key, nova chave: {self.current_key_index}")
+                            continue
+                        else:
+                            logger.error(f"Todas as chaves API foram usadas.")
+                            return None
+
                 else:
+                    logger.error(f"Erro ao analisar com Gemini: {e}")
                     return None
         return None
+
+    def _rotate_api_key(self) -> bool:
+        """Rotates to the next API key in the list. Returns True if successful, False otherwise."""
+        if not self.api_keys:
+            return False
+        self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
+        self._configure_gemini()
+        return True
 
     def _process_gemini_response(self, response_text: Optional[str], post_title: str) -> Dict:
         """Processes the response from the Gemini API."""

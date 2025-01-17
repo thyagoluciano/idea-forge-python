@@ -509,8 +509,8 @@ from typing import Optional
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from src.adapters.models.saas_idea_pt_db import SaasIdeaPtDB
 from src.core.utils.logger import setup_logger
+from src.database.models.saas_idea_pt_db import SaasIdeaPtDB
 
 logger = setup_logger(__name__)
 
@@ -761,7 +761,7 @@ class Base(declarative_base(metadata=metadata)):
 
 ## src/database/models/saas_idea_pt_db.py
 ```python
-from sqlalchemy import Column, Integer, String, ForeignKey, JSON, Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey, JSON, Boolean, Text
 from sqlalchemy.orm import relationship
 
 from src.database.models.database_models import Base
@@ -775,8 +775,8 @@ class SaasIdeaPtDB(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
     description = Column(String)
-    differentiators = Column(JSON)
-    features = Column(JSON)
+    differentiators = Column(Text)
+    features = Column(Text)
     implementation_score = Column(Integer)
     market_viability_score = Column(Integer)
     category = Column(String)
@@ -788,7 +788,7 @@ class SaasIdeaPtDB(Base):
 ## src/database/models/saas_idea_db.py
 ```python
 # src/database/models/saas_idea_db.py
-from sqlalchemy import Column, Integer, String, ForeignKey, JSON, Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey, Text
 from sqlalchemy.orm import relationship
 
 from src.database.models.database_models import Base
@@ -802,8 +802,8 @@ class SaasIdeaDB(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
     description = Column(String)
-    differentiators = Column(JSON)
-    features = Column(JSON)
+    differentiators = Column(Text)
+    features = Column(Text)
     implementation_score = Column(Integer)
     market_viability_score = Column(Integer)
     category = Column(String)
@@ -1145,12 +1145,14 @@ class ExtractionUseCase:
 ## src/core/use_cases/analysis_use_case.py
 ```python
 # src/core/use_cases/analysis_use_case.py
-from src.adapters.models.saas_idea_pt_db import SaasIdeaPtDB
+import json
+
 from src.core.ports.gemini_gateway import GeminiGateway
 from src.core.ports.database_gateway import DatabaseGateway
 from src.core.entities import Post
 from src.core.utils.logger import setup_logger
 from src.database.models.saas_idea_db import SaasIdeaDB
+from src.database.models.saas_idea_pt_db import SaasIdeaPtDB
 
 logger = setup_logger(__name__)
 
@@ -1235,8 +1237,8 @@ class AnalysisUseCase:
                 saas_idea_pt_db = SaasIdeaPtDB(
                     name=saas_product_pt.get("name"),
                     description=saas_product_pt.get("description"),
-                    differentiators=saas_product_pt.get("differentiators", ensure_ascii=False),
-                    features=saas_product_pt.get("features", ensure_ascii=False),
+                    differentiators=saas_product_pt.get("differentiators"),
+                    features=saas_product_pt.get("features"),
                     implementation_score=saas_product_pt.get("implementation_score"),
                     market_viability_score=saas_product_pt.get("market_viability_score"),
                     category=saas_product_pt.get("category"),
@@ -1691,7 +1693,7 @@ class ExtractionScheduler:
 
 ## src/adapters/saas_ideas_adapter.py
 ```python
-# src/adapters/saas_ideas_adapter.py
+import json
 from typing import List, Optional, Dict, Any
 from sqlalchemy import create_engine, asc, desc
 from sqlalchemy.orm import sessionmaker, Query
@@ -1745,6 +1747,19 @@ class SaasIdeasAdapter(SaasIdeasGateway):
         items: List[Any] = query.offset((page - 1) * page_size).limit(page_size).all()
         return items, total
 
+    def _deserialize_saas_idea(self, item: SaasIdeaDB) -> SaasIdea:
+        return SaasIdea(
+            id=item.id,
+            name=item.name,
+            description=item.description,
+            differentiators=json.loads(item.differentiators) if item.differentiators else None,
+            features=json.loads(item.features) if item.features else None,
+            implementation_score=item.implementation_score,
+            market_viability_score=item.market_viability_score,
+            category=item.category,
+            post_id=item.post_id
+        )
+
     def _execute_saas_ideas_query(self, db: sessionmaker, category: Optional[str] = None,
                                   features: Optional[str] = None,
                                   differentiators: Optional[str] = None, description: Optional[str] = None,
@@ -1756,7 +1771,7 @@ class SaasIdeasAdapter(SaasIdeasGateway):
                 query = self._apply_order_by(query, order_by, order_direction)
                 items, total = self._paginate_query(query, page, page_size)
                 return {
-                    "items": [SaasIdea.model_validate(item) for item in items],
+                    "items": [self._deserialize_saas_idea(item) for item in items],
                     "total": total,
                     "page": page,
                     "page_size": page_size,
@@ -1803,7 +1818,6 @@ class SaasIdeasAdapter(SaasIdeasGateway):
             return []
         finally:
             db.close()
-
 ```
 
 ## src/adapters/gemini_adapter.py
@@ -2281,30 +2295,6 @@ class RedditAdapter(RedditGateway):
 
 ```
 
-## src/adapters/models/saas_idea_pt_db.py
-```python
-# src/database/models/saas_idea_pt_db.py
-from sqlalchemy import Column, Integer, String, ForeignKey, JSON, Boolean
-
-from src.database.models.database_models import Base
-
-
-class SaasIdeaPtDB(Base):
-    __tablename__ = "saas_ideas_pt"
-    __table_args__ = {'extend_existing': True}
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String, nullable=False)
-    description = Column(String)
-    differentiators = Column(JSON)
-    features = Column(JSON)
-    implementation_score = Column(Integer)
-    market_viability_score = Column(Integer)
-    category = Column(String)
-    post_id = Column(String, ForeignKey("posts.id"))
-
-```
-
 ## src/adapters/models/__init__.py
 ```python
 # src/adapters/models/__init__.py
@@ -2315,7 +2305,6 @@ from src.adapters.models.paginated_response import PaginatedResponse
 
 ## src/adapters/models/paginated_response.py
 ```python
-# src/adapters/models/paginated_response.py
 from typing import List
 from pydantic import BaseModel
 
@@ -2379,41 +2368,18 @@ Erro ao ler o arquivo: 'utf-8' codec can't decode byte 0xa7 in position 0: inval
 
 ## src/adapters/api/main.py
 ```python
-# src/adapters/api/main.py
-from typing import List, Optional, Dict
+from typing import List, Optional
 from fastapi import FastAPI, Query, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.adapters.database_adapter import DatabaseAdapter
+from src.adapters.models import PaginatedResponse
 from src.core.ports.saas_ideas_gateway import SaasIdeasGateway
 from src.adapters.saas_ideas_adapter import SaasIdeasAdapter
 from src.core.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
-
-
-class SaasIdea(BaseModel):
-    id: int
-    name: str
-    description: Optional[str] = None
-    differentiators: Optional[List[str]] = None
-    features: Optional[List[str]] = None
-    implementation_score: Optional[int] = None
-    market_viability_score: Optional[int] = None
-    category: Optional[str] = None
-    post_id: str
-
-    class Config:
-        from_attributes = True
-
-
-class PaginatedResponse(BaseModel):
-    items: List[SaasIdea]
-    total: int
-    page: int
-    page_size: int
 
 
 app = FastAPI()
@@ -2471,7 +2437,7 @@ def list_saas_ideas(
         logger.error(f"Erro ao buscar ideias Saas: {e}")
         raise HTTPException(status_code=500, detail="Erro ao buscar ideias Saas no banco de dados")
 
-    if not saas_ideas.items:  # Corrigido para usar saas_ideas.items
+    if not saas_ideas.items:
         raise HTTPException(status_code=404, detail="Nenhuma ideia SaaS encontrada com os filtros fornecidos.")
 
     return saas_ideas

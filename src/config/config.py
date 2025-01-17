@@ -1,5 +1,7 @@
+# src/config/config.py
 import os
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 
@@ -11,7 +13,7 @@ class Config:
     REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT")
 
     # Gemini API
-    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+    GOOGLE_API_KEYS = os.getenv("GOOGLE_API_KEYS")
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", 'gemini-pro')  # Default gemini-pro
 
     # Project Settings
@@ -26,8 +28,23 @@ class Config:
     POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
     POSTGRES_DB = os.getenv("POSTGRES_DB", "idea_forge")
 
-    def __post_init__(self):
+    def __init__(self):
+        self.google_api_keys = self._load_api_keys()
         self._validate_required_vars()
+
+    @staticmethod
+    def _load_api_keys():
+        """Loads and validates API keys from environment variable."""
+        keys_str = os.getenv("GOOGLE_API_KEYS", '[]')
+        try:
+            keys = json.loads(keys_str)
+            if not isinstance(keys, list) or not all(isinstance(key, str) for key in keys):
+                raise ValueError("GOOGLE_API_KEYS must be a JSON list of strings.")
+            return keys
+        except json.JSONDecodeError:
+            raise ValueError("Invalid JSON format for GOOGLE_API_KEYS.")
+        except ValueError as e:
+            raise e
 
     def _validate_required_vars(self):
         """Validate required environment variables."""
@@ -36,9 +53,11 @@ class Config:
             "REDDIT_CLIENT_SECRET": self.REDDIT_CLIENT_SECRET,
             "REDDIT_USER_AGENT": self.REDDIT_USER_AGENT,
             "POSTGRES_USER": self.POSTGRES_USER,
-            "POSTGRES_PASSWORD": self.POSTGRES_PASSWORD
+            "POSTGRES_PASSWORD": self.POSTGRES_PASSWORD,
         }
 
         for var, value in required_vars.items():
             if not value:
                 raise ValueError(f"Missing required environment variable: {var}")
+        if not self.google_api_keys:
+            raise ValueError(f"Missing required environment variable: GOOGLE_API_KEYS")
