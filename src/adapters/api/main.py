@@ -1,38 +1,15 @@
-# src/adapters/api/main.py
-from typing import List, Optional, Dict
+from typing import List, Optional
 from fastapi import FastAPI, Query, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.adapters.database_adapter import DatabaseAdapter
+from src.adapters.models import PaginatedResponse
 from src.core.ports.saas_ideas_gateway import SaasIdeasGateway
 from src.adapters.saas_ideas_adapter import SaasIdeasAdapter
 from src.core.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
-
-
-class SaasIdea(BaseModel):
-    id: int
-    name: str
-    description: Optional[str] = None
-    differentiators: Optional[List[str]] = None
-    features: Optional[List[str]] = None
-    implementation_score: Optional[int] = None
-    market_viability_score: Optional[int] = None
-    category: Optional[str] = None
-    post_id: str
-
-    class Config:
-        from_attributes = True
-
-
-class PaginatedResponse(BaseModel):
-    items: List[SaasIdea]
-    total: int
-    page: int
-    page_size: int
 
 
 app = FastAPI()
@@ -90,7 +67,7 @@ def list_saas_ideas(
         logger.error(f"Erro ao buscar ideias Saas: {e}")
         raise HTTPException(status_code=500, detail="Erro ao buscar ideias Saas no banco de dados")
 
-    if not saas_ideas.items:  # Corrigido para usar saas_ideas.items
+    if not saas_ideas.items:
         raise HTTPException(status_code=404, detail="Nenhuma ideia SaaS encontrada com os filtros fornecidos.")
 
     return saas_ideas

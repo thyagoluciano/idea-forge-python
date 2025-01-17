@@ -1,4 +1,3 @@
-# src/adapters/models/paginated_response.py
 from typing import List
 from pydantic import BaseModel
 
