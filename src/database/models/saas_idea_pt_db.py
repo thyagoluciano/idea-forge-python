@@ -1,13 +1,12 @@
-# src/database/models/saas_idea_db.py
-from sqlalchemy import Column, Integer, String, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, JSON, Boolean, Text
 from sqlalchemy.orm import relationship
 
 from src.database.models.database_models import Base
 from src.database.models.post_db import PostDB
 
 
-class SaasIdeaDB(Base):
-    __tablename__ = "saas_ideas"
+class SaasIdeaPtDB(Base):
+    __tablename__ = "saas_ideas_pt"
     __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, autoincrement=True)

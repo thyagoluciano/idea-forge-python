@@ -20,15 +20,15 @@ logger = setup_logger(__name__)
 def main():
     extraction_scheduler = ExtractionScheduler()
     extraction_thread = threading.Thread(target=extraction_scheduler.start)
-    extraction_thread.start()
+    # extraction_thread.start()
 
     # Inicia o scheduler de analise
     analysis_scheduler = AnalysisScheduler()
     analysis_thread = threading.Thread(target=analysis_scheduler.start)
-    analysis_thread.start()
+    # analysis_thread.start()
+
 
     # Força a execução imediata de uma extração
-
     # database_adapter = DatabaseAdapter()
     # configs = database_adapter.get_all_extraction_configs()
     # for config in configs:

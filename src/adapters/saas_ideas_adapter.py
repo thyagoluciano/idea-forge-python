@@ -1,4 +1,4 @@
-# src/adapters/saas_ideas_adapter.py
+import json
 from typing import List, Optional, Dict, Any
 from sqlalchemy import create_engine, asc, desc
 from sqlalchemy.orm import sessionmaker, Query
@@ -52,6 +52,19 @@ class SaasIdeasAdapter(SaasIdeasGateway):
         items: List[Any] = query.offset((page - 1) * page_size).limit(page_size).all()
         return items, total
 
+    def _deserialize_saas_idea(self, item: SaasIdeaDB) -> SaasIdea:
+        return SaasIdea(
+            id=item.id,
+            name=item.name,
+            description=item.description,
+            differentiators=json.loads(item.differentiators) if item.differentiators else None,
+            features=json.loads(item.features) if item.features else None,
+            implementation_score=item.implementation_score,
+            market_viability_score=item.market_viability_score,
+            category=item.category,
+            post_id=item.post_id
+        )
+
     def _execute_saas_ideas_query(self, db: sessionmaker, category: Optional[str] = None,
                                   features: Optional[str] = None,
                                   differentiators: Optional[str] = None, description: Optional[str] = None,
@@ -63,7 +76,7 @@ class SaasIdeasAdapter(SaasIdeasGateway):
                 query = self._apply_order_by(query, order_by, order_direction)
                 items, total = self._paginate_query(query, page, page_size)
                 return {
-                    "items": [SaasIdea.model_validate(item) for item in items],
+                    "items": [self._deserialize_saas_idea(item) for item in items],
                     "total": total,
                     "page": page,
                     "page_size": page_size,

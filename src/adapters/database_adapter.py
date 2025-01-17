@@ -6,6 +6,7 @@ from src.database.database_manager import DatabaseManager
 from src.database.repositories.post_repository import PostRepository
 from src.database.repositories.saas_idea_repository import SaasIdeaRepository
 from src.database.repositories.extraction_config_repository import ExtractionConfigRepository
+from src.database.repositories.saas_idea_pt_repository import SaasIdeaPtRepository  # Importe o SaasIdeaPtRepository
 from src.core.utils.logger import setup_logger
 from src.core.entities import Post, Comment
 from src.database.models.post_db import PostDB
@@ -17,8 +18,17 @@ class DatabaseAdapter(DatabaseGateway):
     def __init__(self):
         self.database_manager = DatabaseManager()
         self.post_repository = PostRepository(self.database_manager)
-        self.saas_idea_repository = SaasIdeaRepository(self.database_manager)
+        self._saas_idea_repository = SaasIdeaRepository(self.database_manager)
         self.extraction_config_repository = ExtractionConfigRepository(self.database_manager)
+        self._saas_idea_pt_repository = SaasIdeaPtRepository(self.database_manager)  # Inicialize o SaasIdeaPtRepository
+
+    @property
+    def saas_idea_repository(self):
+        return self._saas_idea_repository
+
+    @property
+    def saas_idea_pt_repository(self):
+        return self._saas_idea_pt_repository
 
     def add_post(self, post: Post) -> Optional[str]:
         """Adds a post to the database."""
@@ -26,12 +36,13 @@ class DatabaseAdapter(DatabaseGateway):
 
     def add_saas_ideas(self, post_id: str, gemini_analysis: dict) -> None:
         """Adds a saas idea to the database."""
-        self.saas_idea_repository.add_saas_ideas(post_id, gemini_analysis)
+        # self.saas_idea_repository.add_saas_ideas(post_id, gemini_analysis)
+        pass
 
     def post_exists(self, post_id: str) -> bool:
-       """Checks if a post with the given ID already exists in the database."""
-       with self.database_manager.session() as session:
-           return self.post_repository.post_exists(post_id, session)
+        """Checks if a post with the given ID already exists in the database."""
+        with self.database_manager.session() as session:
+            return self.post_repository.post_exists(post_id, session)
 
     def post_already_analyzed(self, post_id: str) -> bool:
         """Checks if a post with the given ID already has gemini analysis"""
@@ -43,12 +54,12 @@ class DatabaseAdapter(DatabaseGateway):
         self.extraction_config_repository.add_extraction_config(config_data)
 
     def get_all_extraction_configs(self) -> List[dict]:
-       """Gets all extraction configurations from the database."""
-       return self.extraction_config_repository.get_all_extraction_configs()
+        """Gets all extraction configurations from the database."""
+        return self.extraction_config_repository.get_all_extraction_configs()
 
     def update_extraction_config(self, config_id: int) -> None:
-       """Updates the last run time for an extraction config."""
-       self.extraction_config_repository.update_extraction_config(config_id)
+        """Updates the last run time for an extraction config."""
+        self.extraction_config_repository.update_extraction_config(config_id)
 
     def update_post_analysis(self, post_id: str) -> None:
         """Updates the post gemini_analysis to true"""

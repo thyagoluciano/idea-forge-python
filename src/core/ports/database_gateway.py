@@ -13,6 +13,16 @@ class DatabaseGateway(ABC):
     def add_saas_ideas(self, post_id: str, gemini_analysis: dict) -> None:
         pass
 
+    @property
+    @abstractmethod
+    def saas_idea_repository(self):
+        pass
+
+    @property
+    @abstractmethod
+    def saas_idea_pt_repository(self):
+        pass
+
     @abstractmethod
     def post_exists(self, post_id: str) -> bool:
         pass
@@ -35,4 +45,8 @@ class DatabaseGateway(ABC):
 
     @abstractmethod
     def update_post_analysis(self, post_id: str) -> None:
+        pass
+
+    @abstractmethod
+    def get_posts_to_analyze(self, batch_size: int = 10) -> List[Post]:
         pass
