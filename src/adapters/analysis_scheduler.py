@@ -19,7 +19,6 @@ class AnalysisScheduler:
         self.gemini_adapter = GeminiAdapter()
         self.analysis_use_case = AnalysisUseCase(self.gemini_adapter, self.database_adapter)
         self.job_interval = 10  # intervalo entre os jobs em segundos
-        self.batch_size = 10
         self.executor = ThreadPoolExecutor(max_workers=5)
 
     def start(self):
@@ -56,7 +55,7 @@ class AnalysisScheduler:
         logger.info(f"Executando análise {job_name} - Iniciou às {start_time}")
 
         try:
-            self.analysis_use_case.analyze_posts(self.batch_size)
+            self.analysis_use_case.analyze_posts()
             logger.info(f"Análise dos posts {job_name} finalizada com sucesso.")
         except Exception as e:
             logger.error(f"Erro durante a execução da análise dos posts: {e}", exc_info=True)

@@ -1,6 +1,6 @@
-# src/core/use_cases/analysis_use_case.py
-import json
+import time
 
+from src.config.config import Config
 from src.core.ports.gemini_gateway import GeminiGateway
 from src.core.ports.database_gateway import DatabaseGateway
 from src.core.entities import Post
@@ -15,11 +15,15 @@ class AnalysisUseCase:
     def __init__(self, gemini_gateway: GeminiGateway, database_gateway: DatabaseGateway):
         self.gemini_gateway = gemini_gateway
         self.database_gateway = database_gateway
+        self.config = Config()
+        self.batch_size = self.config.ANALYSIS_BATCH_SIZE
+        self.batch_interval = self.config.ANALYSIS_BATCH_INTERVAL
 
-    def analyze_posts(self, batch_size: int = 10):
+    def analyze_posts(self):
         offset = 0
         while True:
-            posts = self.database_gateway.get_posts_to_analyze(batch_size)
+
+            posts = self.database_gateway.get_posts_to_analyze(self.batch_size)
             if not posts:
                 logger.info("Não há mais posts para analisar.")
                 break
@@ -30,7 +34,8 @@ class AnalysisUseCase:
                     self._analyze_post(post)
                 except Exception as e:
                     logger.error(f"Erro ao analisar post {post.id}: {e}")
-            offset += batch_size
+            offset += self.batch_size
+            time.sleep(self.batch_interval)
 
     def _analyze_post(self, post: Post):
         text_to_analyze = f"{post.title} \n {post.text} \n {' '.join([comment.text for comment in post.comments])}"

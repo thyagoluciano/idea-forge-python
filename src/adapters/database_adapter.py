@@ -66,38 +66,33 @@ class DatabaseAdapter(DatabaseGateway):
         self.post_repository.update_post_analysis(post_id)
 
     def get_posts_to_analyze(self, batch_size: int = 10) -> List[Post]:
-        """Gets posts that are not analyzed"""
+        """Gets posts that are not analyzed in batches"""
         try:
             with self.database_manager.session() as session:
-                offset = 0
-                posts_to_analyze = []
-                while True:
-                    posts = session.query(PostDB).filter(
-                        PostDB.gemini_analysis == False
-                    ).limit(batch_size).offset(offset).all()
+                posts = session.query(PostDB).filter(PostDB.gemini_analysis == False).limit(batch_size).all()
 
-                    if not posts:
-                        logger.info("Não há mais posts para analisar.")
-                        break
-                    posts_to_analyze.extend([
-                        Post(
-                            title=post.title,
-                            id=post.id,
-                            url=post.url,
-                            text=post.text,
-                            num_comments=post.num_comments,
-                            ups=post.ups,
-                            comments=[
-                                Comment(
-                                    author=comment.author,
-                                    text=comment.text,
-                                    created_utc=comment.created_utc,
-                                    ups=comment.ups
-                                ) for comment in post.comments
-                            ]) for post in posts
-                    ])
-                    offset += batch_size
-                return posts_to_analyze
+                if not posts:
+                    logger.info("Não há mais posts para analisar.")
+                    return []
+
+                posts_to_return = [
+                    Post(
+                        title=post.title,
+                        id=post.id,
+                        url=post.url,
+                        text=post.text,
+                        num_comments=post.num_comments,
+                        ups=post.ups,
+                        comments=[
+                            Comment(
+                                author=comment.author,
+                                text=comment.text,
+                                created_utc=comment.created_utc,
+                                ups=comment.ups
+                            ) for comment in post.comments
+                        ]) for post in posts
+                ]
+                return posts_to_return
         except SQLAlchemyError as e:
             logger.error(f"Erro ao buscar posts para análise: {e}")
             return []

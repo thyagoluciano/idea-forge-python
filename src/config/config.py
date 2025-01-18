@@ -28,6 +28,10 @@ class Config:
     POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
     POSTGRES_DB = os.getenv("POSTGRES_DB", "idea_forge")
 
+    # Analysis Settings
+    ANALYSIS_BATCH_SIZE = int(os.getenv("ANALYSIS_BATCH_SIZE", 10))
+    ANALYSIS_BATCH_INTERVAL = int(os.getenv("ANALYSIS_BATCH_INTERVAL", 5))
+
     def __init__(self):
         self.google_api_keys = self._load_api_keys()
         self._validate_required_vars()
