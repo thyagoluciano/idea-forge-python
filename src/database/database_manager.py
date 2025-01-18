@@ -6,6 +6,9 @@ from src.config.config import Config
 from src.database.models.database_models import Base, metadata
 from src.core.utils.logger import setup_logger
 from contextlib import contextmanager
+from src.database.models.category_db import CategoryDB
+from src.database.models.saas_idea_db import SaasIdeaDB
+from src.database.models.saas_idea_pt_db import SaasIdeaPtDB
 
 logger = setup_logger(__name__)
 
@@ -15,7 +18,7 @@ class DatabaseManager:
         self.config = Config()
         self.engine = self._create_engine()
         # Alterado para criar as tabelas em ordem
-        metadata.create_all(self.engine)
+        metadata.create_all(self.engine, tables=[CategoryDB.__table__, SaasIdeaDB.__table__, SaasIdeaPtDB.__table__])
         self.Session = sessionmaker(bind=self.engine)
 
     def _create_engine(self):

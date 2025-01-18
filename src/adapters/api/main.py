@@ -47,7 +47,7 @@ def get_saas_ideas_adapter(
 
 @app.get("/saas_ideas", response_model=PaginatedResponse)
 def list_saas_ideas(
-        category: Optional[str] = Query(None),
+        category: Optional[List[str]] = Query(None),
         features: Optional[str] = Query(None),
         differentiators: Optional[str] = Query(None),
         description: Optional[str] = Query(None),

@@ -10,6 +10,8 @@ from src.core.utils.logger import setup_logger
 from src.adapters.models import SaasIdea, PaginatedResponse
 from src.database.models.saas_idea_db import SaasIdeaDB
 from src.database.models.saas_idea_pt_db import SaasIdeaPtDB
+from sqlalchemy import or_
+from src.database.models.category_db import CategoryDB
 
 logger = setup_logger(__name__)
 
@@ -23,13 +25,19 @@ class SaasIdeasAdapter(SaasIdeasGateway):
         self.table_name = table_name
         self.table_class = SaasIdeaDB if table_name == 'saas_ideas' else SaasIdeaPtDB
 
-    def _build_saas_ideas_query(self, db: sessionmaker, category: Optional[str] = None, features: Optional[str] = None,
+    def _build_saas_ideas_query(self, db: sessionmaker, category: Optional[List[str]] = None,
+                                features: Optional[str] = None,
                                 differentiators: Optional[str] = None, description: Optional[str] = None) -> Query:
         with db() as session:
             query: Query = session.query(self.table_class)
-
-            if category is not None:
-                query = query.filter(self.table_class.category == category)
+            if category:
+                if isinstance(category, list):
+                    query = query.filter(or_(*[self.table_class.category.has(getattr(CategoryDB,
+                                                                                     'category_pt' if self.table_name == 'saas_ideas_pt' else 'category_en') == cat)
+                                               for cat in category]))
+                else:
+                    query = query.filter(self.table_class.category.has(getattr(CategoryDB,
+                                                                               'category_pt' if self.table_name == 'saas_ideas_pt' else 'category_en') == category))
             if features:
                 query = query.filter(self.table_class.features.like(f"%{features}%"))
             if differentiators:
@@ -55,33 +63,33 @@ class SaasIdeasAdapter(SaasIdeasGateway):
         items: List[Any] = query.offset((page - 1) * page_size).limit(page_size).all()
         return items, total
 
-    @staticmethod
-    def _deserialize_saas_idea(item: SaasIdeaDB) -> SaasIdea:
+    def _deserialize_saas_idea(self, item: SaasIdeaDB) -> SaasIdea:
         differentiators = None
         features = None
+        category_name = None
 
-        differentiators_list = []
-        features_list = []
         if item.differentiators:
             cleaned_string = item.differentiators.strip('{}')
-            differentiators_list = [d.strip('"') for d in cleaned_string.split(',')]
+            differentiators = [d.strip('"') for d in cleaned_string.split(',')]
         if item.features:
             cleaned_string = item.features.strip('{}')
-            features_list = [f.strip('"') for f in cleaned_string.split(',')]
+            features = [f.strip('"') for f in cleaned_string.split(',')]
+        if item.category:
+            category_name = getattr(item.category, 'category_en' if self.table_name == 'saas_ideas' else 'category_pt')
 
         return SaasIdea(
             id=item.id,
             name=item.name,
             description=item.description,
-            differentiators=differentiators_list,
-            features=features_list,
+            differentiators=differentiators,
+            features=features,
             implementation_score=item.implementation_score,
             market_viability_score=item.market_viability_score,
-            category=item.category,
+            category=category_name,
             post_id=item.post_id
         )
 
-    def _execute_saas_ideas_query(self, db: sessionmaker, category: Optional[str] = None,
+    def _execute_saas_ideas_query(self, db: sessionmaker, category: Optional[List[str]] = None,
                                   features: Optional[str] = None,
                                   differentiators: Optional[str] = None, description: Optional[str] = None,
                                   page: int = 1, page_size: int = 10, order_by: Optional[str] = None,
@@ -108,7 +116,7 @@ class SaasIdeasAdapter(SaasIdeasGateway):
             self,
             implementation_score: Optional[int] = None,
             market_viability_score: Optional[int] = None,
-            category: Optional[str] = None,
+            category: Optional[List[str]] = None,
             features: Optional[str] = None,
             differentiators: Optional[str] = None,
             description: Optional[str] = None,
@@ -132,8 +140,9 @@ class SaasIdeasAdapter(SaasIdeasGateway):
     def list_all_categories(self) -> List[str]:
         db = self.SessionLocal()
         try:
-            categories = db.query(self.table_class.category).distinct()
-            return [category[0] for category in categories]
+            categories = db.query(CategoryDB).all()
+            return [getattr(category, 'category_en' if self.table_name == 'saas_ideas' else 'category_pt') for category
+                    in categories]
         except SQLAlchemyError as e:
             logger.error(f"Erro ao buscar categorias: {e}")
             return []

@@ -1,3 +1,5 @@
+# src/core/use_cases/analysis_use_case.py
+import json
 import time
 
 from src.config.config import Config
@@ -7,6 +9,7 @@ from src.core.entities import Post
 from src.core.utils.logger import setup_logger
 from src.database.models.saas_idea_db import SaasIdeaDB
 from src.database.models.saas_idea_pt_db import SaasIdeaPtDB
+from src.database.models.category_db import CategoryDB
 
 logger = setup_logger(__name__)
 
@@ -82,7 +85,7 @@ class AnalysisUseCase:
                     features=saas_product_en.get("features"),
                     implementation_score=saas_product_en.get("implementation_score"),
                     market_viability_score=saas_product_en.get("market_viability_score"),
-                    category=saas_product_en.get("category"),
+                    category_id=saas_product_en.get("category_id"),
                     post_id=post_id
                 )
                 self.database_gateway.saas_idea_repository.add_saas_idea(saas_idea_db)
@@ -100,7 +103,7 @@ class AnalysisUseCase:
                     features=saas_product_pt.get("features"),
                     implementation_score=saas_product_pt.get("implementation_score"),
                     market_viability_score=saas_product_pt.get("market_viability_score"),
-                    category=saas_product_pt.get("category"),
+                    category_id=saas_product_pt.get("category_id"),
                     post_id=post_id
                 )
                 self.database_gateway.saas_idea_pt_repository.add_saas_idea_pt(saas_idea_pt_db)

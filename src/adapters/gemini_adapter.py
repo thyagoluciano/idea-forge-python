@@ -11,6 +11,8 @@ import re
 from src.config.config import Config
 from src.core.ports.gemini_gateway import GeminiGateway
 from src.core.utils.logger import setup_logger
+from src.adapters.database_adapter import DatabaseAdapter
+from src.database.models.category_db import CategoryDB
 
 logger = setup_logger(__name__)
 
@@ -24,6 +26,7 @@ class GeminiAdapter(GeminiGateway):
         self.semaphore = threading.Semaphore(1)  # Limita para 1 thread por vez
         self.retry_delay = int(os.getenv("GEMINI_RETRY_DELAY", 20))  # Tempo de espera entre as tentativas em segundos
         self.max_retries = 3  # Número máximo de tentativas
+        self.database_adapter = DatabaseAdapter()
 
     def _configure_gemini(self):
         """Configures the Gemini API client with the current API key."""
@@ -37,6 +40,12 @@ class GeminiAdapter(GeminiGateway):
 
     def _build_prompt(self, text: str, post_title: str) -> str:
         """Builds the prompt for the Gemini API."""
+
+        with self.database_adapter.database_manager.session() as session:
+            categories = session.query(CategoryDB).all()
+            categories_str = "\n".join(
+                [f"| {category.id} | {category.category_en} | {category.category_pt} |" for category in categories])
+
         return f"""
             You are an assistant specialized in content analysis to identify opportunities for the development of SaaS products. Your task is to analyze a post and its comments, generating insights about pains, problems, and solutions reported, and format the response into two JSON structures: one in English and one translated into Brazilian Portuguese.
 
@@ -51,20 +60,11 @@ class GeminiAdapter(GeminiGateway):
                 *   List the main features.
                 *   Assign an implementation ease score (1 to 5).
                 *   Assign a market viability score (1 to 100).
-            4.  For each identified SaaS product, categorize it in one of the following categories:
-                - Project Management
-                - Customer Relationship Management
-                - Marketing and Sales Automation
-                - Finance Management
-                - Human Resources Management
-                - E-commerce and Retail
-                - Education and Training
-                - Data Analytics and Business Intelligence
-                - Health and Wellness
-                - Social Media Management
-                - Productivity and Workflow
-                - Collaboration and Communication
-                - IT and Security Management
+            4.  For each identified SaaS product, categorize it using only one of the categories from the list below and return the category ID in the JSON payload. Use the following table with category IDs and names for both english and portuguese:
+
+            | ID | English | Portuguese |
+            {categories_str}
+
             5.  Format the output as two JSONs:
 
             {{
@@ -80,7 +80,7 @@ class GeminiAdapter(GeminiGateway):
                                     "implementation_score": int,
                                     "market_viability_score": int,
                                     "name": "SaaS Product Name",
-                                    "category": "Category of the SaaS product"
+                                    "category_id": int
                                 }},
                                 "solution": "Proposed solution"
                             }},
@@ -103,7 +103,7 @@ class GeminiAdapter(GeminiGateway):
                                     "implementation_score": int,
                                     "market_viability_score": int,
                                     "name": "Nome do Produto SaaS",
-                                    "category": "Categoria do produto SaaS"
+                                     "category_id": int
                                 }},
                                 "solution": "Solução proposta"
                             }},
@@ -141,7 +141,7 @@ class GeminiAdapter(GeminiGateway):
         """
 
     def _call_gemini_api(self, prompt: str) -> Optional[str]:
-        """Calls the Gemini API with retry logic."""
+        """Calls the Gemini API with retry logic and key rotation."""
         if not self.model:
             logger.error("Modelo Gemini não está inicializado.")
             return None
