@@ -39,11 +39,10 @@ class SaasIdeasAdapter(SaasIdeasGateway):
 
             return query
 
-    @staticmethod
-    def _apply_order_by(query: Query, order_by: Optional[str] = None,
+    def _apply_order_by(self, query: Query, order_by: Optional[str] = None,
                         order_direction: Optional[str] = "asc") -> Query:
         if order_by:
-            order_by_column = getattr(SaasIdeasAdapter.table_class, order_by)
+            order_by_column = getattr(self.table_class, order_by)
             if order_direction == "asc":
                 query = query.order_by(asc(order_by_column))
             else:
