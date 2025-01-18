@@ -74,7 +74,7 @@ class SaasIdeasAdapter(SaasIdeasGateway):
             id=item.id,
             name=item.name,
             description=item.description,
-            differentiators= differentiators_list,
+            differentiators=differentiators_list,
             features=features_list,
             implementation_score=item.implementation_score,
             market_viability_score=item.market_viability_score,
