@@ -1,10 +1,8 @@
 # src/adapters/saas_ideas_adapter.py
-import json
 from typing import List, Optional, Dict, Any
-from sqlalchemy import create_engine, asc, desc
+from sqlalchemy import asc, desc
 from sqlalchemy.orm import sessionmaker, Query
 from sqlalchemy.exc import SQLAlchemyError
-from src.config.config import Config
 from src.core.ports.saas_ideas_gateway import SaasIdeasGateway
 from src.core.utils.logger import setup_logger
 from src.adapters.models import SaasIdea, PaginatedResponse
@@ -12,18 +10,18 @@ from src.database.models.saas_idea_db import SaasIdeaDB
 from src.database.models.saas_idea_pt_db import SaasIdeaPtDB
 from sqlalchemy import or_
 from src.database.models.category_db import CategoryDB
+from src.adapters.database_adapter import DatabaseAdapter
 
 logger = setup_logger(__name__)
 
 
 class SaasIdeasAdapter(SaasIdeasGateway):
     def __init__(self, table_name: str = 'saas_ideas') -> None:
-        self.config: Config = Config()
-        url: str = f"postgresql://{self.config.POSTGRES_USER}:{self.config.POSTGRES_PASSWORD}@{self.config.POSTGRES_HOST}:{self.config.POSTGRES_PORT}/{self.config.POSTGRES_DB}"
-        self.engine = create_engine(url)
-        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+        self.database_adapter = DatabaseAdapter()
         self.table_name = table_name
         self.table_class = SaasIdeaDB if table_name == 'saas_ideas' else SaasIdeaPtDB
+        self.engine = self.database_adapter.database_manager.engine
+        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
 
     def _build_saas_ideas_query(self, db: sessionmaker, category: Optional[List[str]] = None,
                                 features: Optional[str] = None,
@@ -50,12 +48,12 @@ class SaasIdeasAdapter(SaasIdeasGateway):
     def _apply_order_by(self, query: Query, order_by: Optional[str] = None,
                         order_direction: Optional[str] = "asc") -> Query:
         if order_by == "category":
-          order_by_column = getattr(CategoryDB, 'category_en' if self.table_name == 'saas_ideas' else 'category_pt')
-          query = query.join(self.table_class.category)
-          if order_direction == "asc":
-              query = query.order_by(asc(order_by_column))
-          else:
-              query = query.order_by(desc(order_by_column))
+            order_by_column = getattr(CategoryDB, 'category_en' if self.table_name == 'saas_ideas' else 'category_pt')
+            query = query.join(self.table_class.category)
+            if order_direction == "asc":
+                query = query.order_by(asc(order_by_column))
+            else:
+                query = query.order_by(desc(order_by_column))
         elif order_by:
             order_by_column = getattr(self.table_class, order_by)
             if order_direction == "asc":
