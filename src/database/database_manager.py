@@ -25,7 +25,13 @@ class DatabaseManager:
         """Creates and returns the database engine."""
         try:
             url = f"postgresql://{self.config.POSTGRES_USER}:{self.config.POSTGRES_PASSWORD}@{self.config.POSTGRES_HOST}:{self.config.POSTGRES_PORT}/{self.config.POSTGRES_DB}"
-            engine = create_engine(url, echo=False, pool_size=self.config.POSTGRES_POOL_SIZE, max_overflow=20)
+            engine = create_engine(
+                url,
+                echo=False,
+                pool_size=self.config.POSTGRES_POOL_SIZE,
+                max_overflow=self.config.POSTGRES_MAX_OVERFLOW,
+                pool_recycle=self.config.POSTGRES_POOL_RECYCLE
+            )
             logger.info("Conexão com o banco de dados estabelecida com sucesso.")
             return engine
         except SQLAlchemyError as e:

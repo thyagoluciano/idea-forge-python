@@ -20,12 +20,12 @@ logger = setup_logger(__name__)
 def main():
     extraction_scheduler = ExtractionScheduler()
     extraction_thread = threading.Thread(target=extraction_scheduler.start)
-    extraction_thread.start()
+    # extraction_thread.start()
 
     # Inicia o scheduler de analise
     analysis_scheduler = AnalysisScheduler()
     analysis_thread = threading.Thread(target=analysis_scheduler.start)
-    analysis_thread.start()
+    # analysis_thread.start()
 
 
     # Força a execução imediata de uma extração
@@ -35,7 +35,7 @@ def main():
     #     if config.subreddit_name == "bigcommerce":
     #         extraction_scheduler.run_extraction_now(config)
 
-    analysis_scheduler.run_analysis_now()
+    # analysis_scheduler.run_analysis_now()
 
     api_thread = threading.Thread(target=run_api)
     api_thread.start()

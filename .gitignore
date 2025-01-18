@@ -2,6 +2,11 @@
 .idea
 
 venv
-__pycache__
 
+**/__pycache__/*
+*.pyc
+*.pyo
+src/adapters/__pycache__
 app.log
+
+catalogo_arquivos.md

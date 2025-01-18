@@ -31,8 +31,11 @@ class Config:
     # Analysis Settings
     ANALYSIS_BATCH_SIZE = int(os.getenv("ANALYSIS_BATCH_SIZE", 10))
     ANALYSIS_BATCH_INTERVAL = int(os.getenv("ANALYSIS_BATCH_INTERVAL", 5))
+
     # Database Pool Size
     POSTGRES_POOL_SIZE = int(os.getenv("POSTGRES_POOL_SIZE", 10))
+    POSTGRES_MAX_OVERFLOW = int(os.getenv("POSTGRES_MAX_OVERFLOW", 20))
+    POSTGRES_POOL_RECYCLE = int(os.getenv("POSTGRES_POOL_RECYCLE", 300))  # 5 minutos
 
     def __init__(self):
         self.google_api_keys = self._load_api_keys()
