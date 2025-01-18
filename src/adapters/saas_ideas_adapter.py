@@ -56,25 +56,26 @@ class SaasIdeasAdapter(SaasIdeasGateway):
         items: List[Any] = query.offset((page - 1) * page_size).limit(page_size).all()
         return items, total
 
-    def _deserialize_saas_idea(self, item: SaasIdeaDB) -> SaasIdea:
-        try:
-            differentiators = json.loads(item.differentiators) if item.differentiators else None
-        except (json.JSONDecodeError, TypeError) as e:
-            logger.error(f"Erro ao desserializar differentiators para o item {item.id}: {e}")
-            differentiators = None
+    @staticmethod
+    def _deserialize_saas_idea(item: SaasIdeaDB) -> SaasIdea:
+        differentiators = None
+        features = None
 
-        try:
-            features = json.loads(item.features) if item.features else None
-        except (json.JSONDecodeError, TypeError) as e:
-            logger.error(f"Erro ao desserializar features para o item {item.id}: {e}")
-            features = None
+        differentiators_list = []
+        features_list = []
+        if item.differentiators:
+            cleaned_string = item.differentiators.strip('{}')
+            differentiators_list = [d.strip('"') for d in cleaned_string.split(',')]
+        if item.features:
+            cleaned_string = item.features.strip('{}')
+            features_list = [f.strip('"') for f in cleaned_string.split(',')]
 
         return SaasIdea(
             id=item.id,
             name=item.name,
             description=item.description,
-            differentiators=differentiators,
-            features=features,
+            differentiators= differentiators_list,
+            features=features_list,
             implementation_score=item.implementation_score,
             market_viability_score=item.market_viability_score,
             category=item.category,
