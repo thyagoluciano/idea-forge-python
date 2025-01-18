@@ -1,3 +1,4 @@
+# src/adapters/saas_ideas_adapter.py
 import json
 from typing import List, Optional, Dict, Any
 from sqlalchemy import create_engine, asc, desc
@@ -8,30 +9,33 @@ from src.core.ports.saas_ideas_gateway import SaasIdeasGateway
 from src.core.utils.logger import setup_logger
 from src.adapters.models import SaasIdea, PaginatedResponse
 from src.database.models.saas_idea_db import SaasIdeaDB
+from src.database.models.saas_idea_pt_db import SaasIdeaPtDB
 
 logger = setup_logger(__name__)
 
 
 class SaasIdeasAdapter(SaasIdeasGateway):
-    def __init__(self) -> None:
+    def __init__(self, table_name: str = 'saas_ideas') -> None:
         self.config: Config = Config()
         url: str = f"postgresql://{self.config.POSTGRES_USER}:{self.config.POSTGRES_PASSWORD}@{self.config.POSTGRES_HOST}:{self.config.POSTGRES_PORT}/{self.config.POSTGRES_DB}"
         self.engine = create_engine(url)
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+        self.table_name = table_name
+        self.table_class = SaasIdeaDB if table_name == 'saas_ideas' else SaasIdeaPtDB
 
     def _build_saas_ideas_query(self, db: sessionmaker, category: Optional[str] = None, features: Optional[str] = None,
                                 differentiators: Optional[str] = None, description: Optional[str] = None) -> Query:
         with db() as session:
-            query: Query = session.query(SaasIdeaDB)
+            query: Query = session.query(self.table_class)
 
             if category is not None:
-                query = query.filter(SaasIdeaDB.category == category)
+                query = query.filter(self.table_class.category == category)
             if features:
-                query = query.filter(SaasIdeaDB.features.like(f"%{features}%"))
+                query = query.filter(self.table_class.features.like(f"%{features}%"))
             if differentiators:
-                query = query.filter(SaasIdeaDB.differentiators.like(f"%{differentiators}%"))
+                query = query.filter(self.table_class.differentiators.like(f"%{differentiators}%"))
             if description:
-                query = query.filter(SaasIdeaDB.description.like(f"%{description}%"))
+                query = query.filter(self.table_class.description.like(f"%{description}%"))
 
             return query
 
@@ -39,7 +43,7 @@ class SaasIdeasAdapter(SaasIdeasGateway):
     def _apply_order_by(query: Query, order_by: Optional[str] = None,
                         order_direction: Optional[str] = "asc") -> Query:
         if order_by:
-            order_by_column = getattr(SaasIdeaDB, order_by)
+            order_by_column = getattr(SaasIdeasAdapter.table_class, order_by)
             if order_direction == "asc":
                 query = query.order_by(asc(order_by_column))
             else:
@@ -53,12 +57,24 @@ class SaasIdeasAdapter(SaasIdeasGateway):
         return items, total
 
     def _deserialize_saas_idea(self, item: SaasIdeaDB) -> SaasIdea:
+        try:
+            differentiators = json.loads(item.differentiators) if item.differentiators else None
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.error(f"Erro ao desserializar differentiators para o item {item.id}: {e}")
+            differentiators = None
+
+        try:
+            features = json.loads(item.features) if item.features else None
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.error(f"Erro ao desserializar features para o item {item.id}: {e}")
+            features = None
+
         return SaasIdea(
             id=item.id,
             name=item.name,
             description=item.description,
-            differentiators=json.loads(item.differentiators) if item.differentiators else None,
-            features=json.loads(item.features) if item.features else None,
+            differentiators=differentiators,
+            features=features,
             implementation_score=item.implementation_score,
             market_viability_score=item.market_viability_score,
             category=item.category,
@@ -116,7 +132,7 @@ class SaasIdeasAdapter(SaasIdeasGateway):
     def list_all_categories(self) -> List[str]:
         db = self.SessionLocal()
         try:
-            categories = db.query(SaasIdeaDB.category).distinct()
+            categories = db.query(self.table_class.category).distinct()
             return [category[0] for category in categories]
         except SQLAlchemyError as e:
             logger.error(f"Erro ao buscar categorias: {e}")

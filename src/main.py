@@ -35,7 +35,7 @@ def main():
     #     if config.subreddit_name == "bigcommerce":
     #         extraction_scheduler.run_extraction_now(config)
 
-    analysis_scheduler.run_analysis_now()
+    # analysis_scheduler.run_analysis_now()
 
     api_thread = threading.Thread(target=run_api)
     api_thread.start()

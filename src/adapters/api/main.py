@@ -1,5 +1,6 @@
+# src/adapters/api/main.py
 from typing import List, Optional
-from fastapi import FastAPI, Query, HTTPException, Depends
+from fastapi import FastAPI, Query, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -34,9 +35,13 @@ def get_database_adapter():
     return adapter
 
 
-def get_saas_ideas_adapter(database_adapter: DatabaseAdapter = Depends(get_database_adapter)):
-    """Dependency to get the saas ideas adapter"""
-    adapter = SaasIdeasAdapter()
+def get_saas_ideas_adapter(
+    database_adapter: DatabaseAdapter = Depends(get_database_adapter),
+    accept_language: str = Header(default="en-US")
+):
+    """Dependency to get the saas ideas adapter based on language"""
+    table_name = "saas_ideas_pt" if accept_language.startswith("pt") else "saas_ideas"
+    adapter = SaasIdeasAdapter(table_name=table_name)
     return adapter
 
 
