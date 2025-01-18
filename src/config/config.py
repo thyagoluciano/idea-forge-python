@@ -31,13 +31,14 @@ class Config:
     # Analysis Settings
     ANALYSIS_BATCH_SIZE = int(os.getenv("ANALYSIS_BATCH_SIZE", 10))
     ANALYSIS_BATCH_INTERVAL = int(os.getenv("ANALYSIS_BATCH_INTERVAL", 5))
+    # Database Pool Size
+    POSTGRES_POOL_SIZE = int(os.getenv("POSTGRES_POOL_SIZE", 10))
 
     def __init__(self):
         self.google_api_keys = self._load_api_keys()
         self._validate_required_vars()
 
-    @staticmethod
-    def _load_api_keys():
+    def _load_api_keys(self):
         """Loads and validates API keys from environment variable."""
         keys_str = os.getenv("GOOGLE_API_KEYS", '[]')
         try:
