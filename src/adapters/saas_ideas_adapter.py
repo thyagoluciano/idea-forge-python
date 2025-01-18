@@ -49,7 +49,14 @@ class SaasIdeasAdapter(SaasIdeasGateway):
 
     def _apply_order_by(self, query: Query, order_by: Optional[str] = None,
                         order_direction: Optional[str] = "asc") -> Query:
-        if order_by:
+        if order_by == "category":
+          order_by_column = getattr(CategoryDB, 'category_en' if self.table_name == 'saas_ideas' else 'category_pt')
+          query = query.join(self.table_class.category)
+          if order_direction == "asc":
+              query = query.order_by(asc(order_by_column))
+          else:
+              query = query.order_by(desc(order_by_column))
+        elif order_by:
             order_by_column = getattr(self.table_class, order_by)
             if order_direction == "asc":
                 query = query.order_by(asc(order_by_column))
